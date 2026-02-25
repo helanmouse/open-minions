@@ -1,25 +1,36 @@
 import { describe, it, expect } from 'vitest';
-import { parseRunArgs } from '../src/cli/index.js';
+import { parseCliArgs } from '../src/cli/index.js';
 
 describe('CLI arg parsing', () => {
-  it('parses run command args', () => {
-    const result = parseRunArgs({
-      repo: 'https://gitlab.com/test/repo.git',
-      description: 'Fix login bug',
-      blueprint: 'fix-issue',
-      issue: '42',
-    });
-    expect(result.repo_url).toBe('https://gitlab.com/test/repo.git');
-    expect(result.description).toBe('Fix login bug');
-    expect(result.blueprint).toBe('fix-issue');
-    expect(result.issue_id).toBe('42');
+  it('parses run command with natural language', () => {
+    const result = parseCliArgs(['run', '修复登录页面空邮箱时的崩溃问题']);
+    expect(result.command).toBe('run');
+    expect(result.description).toBe('修复登录页面空邮箱时的崩溃问题');
   });
 
-  it('defaults blueprint to fix-issue', () => {
-    const result = parseRunArgs({
-      repo: 'https://gitlab.com/test/repo.git',
-      description: 'Fix something',
-    });
-    expect(result.blueprint).toBe('fix-issue');
+  it('parses run with --repo override', () => {
+    const result = parseCliArgs(['run', 'Fix bug', '--repo', '/path/to/repo']);
+    expect(result.repo).toBe('/path/to/repo');
+  });
+
+  it('parses run with -y flag', () => {
+    const result = parseCliArgs(['run', '-y', 'Fix bug']);
+    expect(result.yes).toBe(true);
+  });
+
+  it('parses run with -d flag', () => {
+    const result = parseCliArgs(['run', '-d', 'Add feature']);
+    expect(result.detach).toBe(true);
+  });
+
+  it('parses status command', () => {
+    const result = parseCliArgs(['status', 'abc123']);
+    expect(result.command).toBe('status');
+    expect(result.taskId).toBe('abc123');
+  });
+
+  it('parses list command', () => {
+    const result = parseCliArgs(['list']);
+    expect(result.command).toBe('list');
   });
 });
