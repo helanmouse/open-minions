@@ -1,0 +1,26 @@
+FROM node:22-slim
+
+# Install essential tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    wget \
+    make \
+    gcc \
+    g++ \
+    python3 \
+    ripgrep \
+    ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Create workspace directory
+RUN mkdir -p /workspace /minion-run/patches
+
+# Copy Sandbox Agent code
+WORKDIR /opt/minion
+COPY package.json package-lock.json ./
+RUN npm ci --production
+COPY dist/ ./dist/
+
+# Entry point: run Sandbox Agent
+CMD ["node", "dist/agent/main.js"]
