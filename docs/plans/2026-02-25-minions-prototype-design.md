@@ -58,8 +58,25 @@
 
 三层职责：
 - **入口层**：接收来自 CLI/Webhook/API 的任务请求，可随时扩展新入口
-- **Gateway**：任务队列管理、Worker 调度、GitLab API 交互
-- **Agent Worker**：隔离子进程，每个任务独立运行 Blueprint
+- **Gateway**：任务队列管理（BullMQ + Redis）、Worker 调度（fork 子进程消费队列）、GitLab API 交互
+- **Agent Worker**：隔离子进程，每个任务独立运行 Blueprint，由 BullMQ Worker 消费队列自动派发
+
+Gateway 与 Worker 的连接：Gateway 入队后，BullMQ Worker 进程自动消费任务，fork 子进程执行 Blueprint，执行完毕后更新任务状态并回调通知。
+
+## MVP 与后续版本边界
+
+**MVP（当前版）：**
+- CLI 触发 → Gateway 入队 → BullMQ Worker 消费 → Blueprint 执行（clone → LLM 编码 → lint → push → 创建 MR）
+- 内存队列 + Redis（BullMQ）
+- 单机部署，单 Worker 进程
+- 集成测试覆盖完整闭环（真实 git 操作 + mock LLM）
+
+**后续版（延期）：**
+- GitLab Webhook 触发 + Slack Bot 入口
+- @gitbeaker/rest 替代原生 fetch 调用 GitLab API
+- CI 状态机（ci_running / ci_pass）+ CI 结果回调
+- 多 Worker 并发 + 分布式部署
+- MR 评论追加指令触发二次修复
 
 ## Blueprint 引擎
 
@@ -97,7 +114,7 @@ steps:
 
   - id: fix_lint
     type: agent
-    condition: "{{steps.lint.exit_code != 0}}"
+    condition: "{{steps.lint.exit_code == 1}}"
     tools: [read, edit]
     prompt: "修复以下 lint 错误：{{steps.lint.errors}}"
     max_iterations: 5
@@ -145,11 +162,28 @@ interface AgentTool {
 }
 ```
 
+export interface TaskRequest {
+  id: string;
+  repo_url: string;
+  project_id: string;            // 从 repo_url 自动解析，如 "group/repo"
+  description: string;
+  issue_id?: string;
+  title?: string;
+  blueprint: string;
+  created_at: string;
+}
+```
+
 Agent 节点可用工具：read / write / edit / bash / search_code / list_files
 
 确定性节点专用动作：git_clone / git_push / run_lint / run_test / create_merge_request / load_context
 
 工具策略：每个 Blueprint agent 节点声明可用工具子集，防止 LLM 越权操作。
+
+安全基线：
+- 文件操作工具使用 `path.resolve` + 规范化后校验前缀，防止路径穿越
+- bash 工具使用 `execFile` + 参数数组替代 shell 字符串拼接，防止命令注入
+- search 工具参数通过转义处理，不直接拼入 shell
 
 ## 上下文加载策略
 
@@ -168,8 +202,9 @@ Agent 节点可用工具：read / write / edit / bash / search_code / list_files
 加载流程：
 1. 读取 `.minion/config.yaml` 获取项目配置
 2. 读取触发源上下文（Issue 描述 / CLI 输入 / Pipeline 错误日志）
-3. Agent 遍历文件系统时，动态加载当前目录的 `.minion-rules.md`
-4. 所有上下文按需注入，不一次性塞满窗口
+3. 调用 `loadRulesForPath` 加载全局规则 + 目录级规则，注入 `context.rules`
+4. Agent 遍历文件系统时，动态加载当前目录的 `.minion-rules.md`
+5. 所有上下文按需注入，不一次性塞满窗口
 
 ## 任务生命周期与反馈循环
 
@@ -179,6 +214,7 @@ Agent 节点可用工具：read / write / edit / bash / search_code / list_files
 
 左移反馈策略（借鉴 Stripe）：
 - 本地 lint 先行：秒级反馈，低级错误拦在 CI 之前
+- 未配置 lint 命令时返回 `skipped` 状态（exit_code=-1），不视为通过
 - CI 反馈限次：最多 1-2 轮自动修复，超过则交还人类
 - 每轮修复只把失败信息喂给 LLM，不重复发送整个代码库
 

@@ -141,11 +141,23 @@ export type TaskStatus =
 export interface TaskRequest {
   id: string;
   repo_url: string;
+  project_id: string;            // 从 repo_url 自动解析，如 "group/repo"
   description: string;
   issue_id?: string;
   title?: string;
   blueprint: string;           // e.g. "fix-issue"
   created_at: string;
+}
+
+/**
+ * 从 GitLab repo URL 解析 project_id
+ * e.g. "https://gitlab.com/group/repo.git" → "group/repo"
+ */
+export function parseProjectId(repoUrl: string): string {
+  const url = new URL(repoUrl);
+  const path = url.pathname.replace(/^\//, '').replace(/\.git$/, '');
+  if (!path) throw new Error(`Cannot parse project_id from: ${repoUrl}`);
+  return path;
 }
 
 export interface TaskState {
@@ -296,7 +308,7 @@ import { tmpdir } from 'os';
 
 const makeCtx = (workdir: string): ToolContext => ({
   workdir,
-  task: { id: '1', repo_url: '', description: '', blueprint: 'test', created_at: '' },
+  task: { id: '1', repo_url: '', project_id: '', description: '', blueprint: 'test', created_at: '' },
   stepResults: {},
 });
 
@@ -412,8 +424,9 @@ import { join, dirname, resolve } from 'path';
 import type { AgentTool } from './types.js';
 
 function safePath(workdir: string, path: string): string {
-  const resolved = resolve(workdir, path);
-  if (!resolved.startsWith(resolve(workdir))) {
+  const resolved = resolve(join(workdir, path));
+  const normalizedWorkdir = resolve(workdir) + '/';
+  if (resolved !== resolve(workdir) && !resolved.startsWith(normalizedWorkdir)) {
     throw new Error('Path traversal blocked');
   }
   return resolved;
@@ -560,7 +573,7 @@ export const bashTool: AgentTool = {
 
 Create `src/tools/search.ts`:
 ```typescript
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { AgentTool } from './types.js';
 
 export const searchCodeTool: AgentTool = {
@@ -575,21 +588,21 @@ export const searchCodeTool: AgentTool = {
     required: ['pattern'],
   },
   async execute(params, ctx) {
-    const globArg = params.glob ? `--glob '${params.glob}'` : '';
+    const args = ['--line-number', '--no-heading'];
+    if (params.glob) args.push('--glob', params.glob);
+    args.push(params.pattern, '.');
     try {
-      const output = execSync(
-        `rg --line-number --no-heading ${globArg} '${params.pattern}' .`,
-        { cwd: ctx.workdir, encoding: 'utf-8', timeout: 30_000, maxBuffer: 1024 * 1024 }
-      );
+      const output = execFileSync('rg', args, {
+        cwd: ctx.workdir, encoding: 'utf-8', timeout: 30_000, maxBuffer: 1024 * 1024,
+      });
       return { success: true, output };
     } catch (e: any) {
       if (e.status === 1) return { success: true, output: 'No matches found' };
       // Fallback to grep
       try {
-        const output = execSync(
-          `grep -rn '${params.pattern}' .`,
-          { cwd: ctx.workdir, encoding: 'utf-8', timeout: 30_000 }
-        );
+        const output = execFileSync('grep', ['-rn', params.pattern, '.'], {
+          cwd: ctx.workdir, encoding: 'utf-8', timeout: 30_000,
+        });
         return { success: true, output };
       } catch {
         return { success: false, output: '', error: 'Search failed' };
@@ -924,7 +937,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { AgentLoop } from '../src/worker/agent-loop.js';
 import { ToolRegistry } from '../src/tools/registry.js';
 import type { LLMAdapter } from '../src/llm/types.js';
-import type { Message, ToolDef, LLMEvent } from '../src/types.js';
+import type { Message, ToolDef, LLMEvent, ToolContext } from '../src/types.js';
+import { mkdtempSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 function makeMockLLM(responses: LLMEvent[][]): LLMAdapter {
   let callIndex = 0;
@@ -937,6 +953,12 @@ function makeMockLLM(responses: LLMEvent[][]): LLMAdapter {
   };
 }
 
+const makeCtx = (): ToolContext => ({
+  workdir: mkdtempSync(join(tmpdir(), 'minion-test-')),
+  task: { id: '1', repo_url: '', project_id: '', description: '', blueprint: 'test', created_at: '' },
+  stepResults: {},
+});
+
 describe('AgentLoop', () => {
   it('returns text response when no tool calls', async () => {
     const llm = makeMockLLM([
@@ -944,7 +966,7 @@ describe('AgentLoop', () => {
     ]);
     const registry = new ToolRegistry();
     const loop = new AgentLoop(llm, registry, { maxIterations: 5 });
-    const result = await loop.run('Say hello', []);
+    const result = await loop.run('Say hello', [], makeCtx());
     expect(result.output).toContain('Done!');
     expect(result.iterations).toBe(1);
   });
@@ -967,7 +989,7 @@ describe('AgentLoop', () => {
       },
     });
     const loop = new AgentLoop(llm, registry, { maxIterations: 5 });
-    const result = await loop.run('Use echo tool', ['echo']);
+    const result = await loop.run('Use echo tool', ['echo'], makeCtx());
     expect(result.iterations).toBe(2);
     expect(result.output).toContain('Finished');
   });
@@ -985,7 +1007,7 @@ describe('AgentLoop', () => {
       async execute() { return { success: true, output: 'ok' }; },
     });
     const loop = new AgentLoop(llm, registry, { maxIterations: 3 });
-    const result = await loop.run('Loop forever', ['echo']);
+    const result = await loop.run('Loop forever', ['echo'], makeCtx());
     expect(result.iterations).toBe(3);
   });
 });
@@ -1025,8 +1047,8 @@ export class AgentLoop {
   async run(
     prompt: string,
     toolNames: string[],
+    ctx: ToolContext,
     systemPrompt?: string,
-    ctx?: ToolContext,
   ): Promise<AgentLoopResult> {
     const messages: Message[] = [];
     if (systemPrompt) {
@@ -1080,7 +1102,7 @@ export class AgentLoop {
         } else {
           try {
             const params = JSON.parse(tc.arguments);
-            const result = await tool.execute(params, ctx!);
+            const result = await tool.execute(params, ctx);
             resultText = result.success
               ? result.output
               : `Error: ${result.error}`;
@@ -1316,7 +1338,6 @@ export class BlueprintEngine {
         const result = await agentLoop.run(
           prompt,
           step.tools || [],
-          undefined,
           toolCtx,
         );
         bpCtx.steps[step.id] = {
@@ -1373,7 +1394,7 @@ steps:
 
   - id: fix_lint
     type: agent
-    condition: "{{steps.lint.exit_code != 0}}"
+    condition: "{{steps.lint.exit_code == 1}}"
     tools: [read, edit]
     prompt: "Fix these lint errors:\n{{steps.lint.error}}"
     max_iterations: 5
@@ -1424,7 +1445,7 @@ const makeBpCtx = (): BlueprintContext => ({
 
 const makeToolCtx = (workdir: string): ToolContext => ({
   workdir,
-  task: { id: '1', repo_url: '', description: '', blueprint: 'test', created_at: '' },
+  task: { id: '1', repo_url: '', project_id: '', description: '', blueprint: 'test', created_at: '' },
   stepResults: {},
 });
 
@@ -1447,6 +1468,16 @@ describe('actions', () => {
     const actions = createActions({ url: '', token: '' });
     const result = await actions.run_lint({}, makeBpCtx(), makeToolCtx(dir));
     expect(result.exit_code).toBe(1);
+  });
+
+  it('run_lint returns skipped when no lint_command configured', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'minion-action-'));
+    mkdirSync(join(dir, '.minion'), { recursive: true });
+    writeFileSync(join(dir, '.minion', 'config.yaml'), '{}');
+    const actions = createActions({ url: '', token: '' });
+    const result = await actions.run_lint({}, makeBpCtx(), makeToolCtx(dir));
+    expect(result.exit_code).toBe(-1);
+    expect(result.output).toContain('no lint_command configured');
   });
 });
 ```
@@ -1502,8 +1533,8 @@ export function loadRulesForPath(workdir: string, filePath: string): string {
 
 Create `src/worker/actions.ts`:
 ```typescript
-import { execSync } from 'child_process';
-import { loadProjectConfig } from '../context/loader.js';
+import { execFileSync, execSync } from 'child_process';
+import { loadProjectConfig, loadRulesForPath } from '../context/loader.js';
 import type { BlueprintContext, DeterministicAction } from './blueprint-engine.js';
 import type { ToolContext } from '../types.js';
 
@@ -1515,10 +1546,10 @@ interface GitLabConfig {
 export function createActions(gitlab: GitLabConfig) {
   const git_clone: DeterministicAction = async (params, _bpCtx, toolCtx) => {
     try {
-      execSync(`git clone ${params.repo} .`, {
+      execFileSync('git', ['clone', params.repo, '.'], {
         cwd: toolCtx.workdir, encoding: 'utf-8', timeout: 120_000,
       });
-      execSync(`git checkout -b ${params.branch}`, {
+      execFileSync('git', ['checkout', '-b', params.branch], {
         cwd: toolCtx.workdir, encoding: 'utf-8',
       });
       return { exit_code: 0, output: `Cloned and checked out ${params.branch}` };
@@ -1530,11 +1561,14 @@ export function createActions(gitlab: GitLabConfig) {
   const load_context: DeterministicAction = async (params, bpCtx, toolCtx) => {
     const config = loadProjectConfig(toolCtx.workdir);
     bpCtx.context.config = config;
-    // If issue_id provided, fetch from GitLab
-    if (params.issue_id && gitlab.token) {
+    // Load rules from project
+    bpCtx.context.rules = loadRulesForPath(toolCtx.workdir, 'src');
+    // If issue_id provided, fetch from GitLab using task's project_id
+    const projectId = toolCtx.task.project_id;
+    if (params.issue_id && gitlab.token && projectId) {
       try {
         const res = await fetch(
-          `${gitlab.url}/api/v4/projects/${encodeURIComponent(params.project_id || '')}/issues/${params.issue_id}`,
+          `${gitlab.url}/api/v4/projects/${encodeURIComponent(projectId)}/issues/${params.issue_id}`,
           { headers: { 'PRIVATE-TOKEN': gitlab.token } }
         );
         if (res.ok) {
@@ -1544,16 +1578,17 @@ export function createActions(gitlab: GitLabConfig) {
         }
       } catch { /* offline mode — skip */ }
     }
-    bpCtx.context.rules = '';
     return { exit_code: 0, output: 'Context loaded' };
   };
 
   const run_lint: DeterministicAction = async (_params, _bpCtx, toolCtx) => {
     const config = loadProjectConfig(toolCtx.workdir);
-    const cmd = config.lint_command || 'echo "No lint command configured"';
+    if (!config.lint_command) {
+      return { exit_code: -1, output: 'Warning: no lint_command configured in .minion/config.yaml, skipped' };
+    }
     try {
-      const output = execSync(cmd, {
-        cwd: toolCtx.workdir, encoding: 'utf-8', timeout: 60_000,
+      const output = execSync(config.lint_command, {
+        cwd: toolCtx.workdir, encoding: 'utf-8', timeout: 60_000, shell: '/bin/sh',
       });
       return { exit_code: 0, output };
     } catch (e: any) {
@@ -1563,10 +1598,12 @@ export function createActions(gitlab: GitLabConfig) {
 
   const run_test: DeterministicAction = async (_params, _bpCtx, toolCtx) => {
     const config = loadProjectConfig(toolCtx.workdir);
-    const cmd = config.test_command || 'echo "No test command configured"';
+    if (!config.test_command) {
+      return { exit_code: -1, output: 'Warning: no test_command configured, skipped' };
+    }
     try {
-      const output = execSync(cmd, {
-        cwd: toolCtx.workdir, encoding: 'utf-8', timeout: 300_000,
+      const output = execSync(config.test_command, {
+        cwd: toolCtx.workdir, encoding: 'utf-8', timeout: 300_000, shell: '/bin/sh',
       });
       return { exit_code: 0, output };
     } catch (e: any) {
@@ -1576,10 +1613,11 @@ export function createActions(gitlab: GitLabConfig) {
 
   const git_push: DeterministicAction = async (_params, _bpCtx, toolCtx) => {
     try {
-      execSync('git add -A && git commit -m "chore: minion auto-commit" --allow-empty', {
+      execFileSync('git', ['add', '-A'], { cwd: toolCtx.workdir, encoding: 'utf-8' });
+      execFileSync('git', ['commit', '-m', 'chore: minion auto-commit', '--allow-empty'], {
         cwd: toolCtx.workdir, encoding: 'utf-8',
       });
-      execSync('git push -u origin HEAD', {
+      execFileSync('git', ['push', '-u', 'origin', 'HEAD'], {
         cwd: toolCtx.workdir, encoding: 'utf-8', timeout: 60_000,
       });
       return { exit_code: 0, output: 'Pushed' };
@@ -1592,13 +1630,16 @@ export function createActions(gitlab: GitLabConfig) {
     if (!gitlab.token) {
       return { exit_code: 1, output: '', error: 'No GitLab token configured' };
     }
+    const projectId = toolCtx.task.project_id;
+    if (!projectId) {
+      return { exit_code: 1, output: '', error: 'No project_id available' };
+    }
     try {
-      // Get current branch name
-      const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+      const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
         cwd: toolCtx.workdir, encoding: 'utf-8',
       }).trim();
       const res = await fetch(
-        `${gitlab.url}/api/v4/projects/${encodeURIComponent(params.project_id || '')}/merge_requests`,
+        `${gitlab.url}/api/v4/projects/${encodeURIComponent(projectId)}/merge_requests`,
         {
           method: 'POST',
           headers: {
@@ -1658,7 +1699,7 @@ describe('Gateway Server', () => {
   let server: Awaited<ReturnType<typeof buildServer>>;
 
   beforeAll(async () => {
-    server = await buildServer({ skipQueue: true });
+    server = await buildServer({ skipDispatch: true });
   });
 
   afterAll(async () => {
@@ -1702,14 +1743,16 @@ describe('Gateway Server', () => {
 Run: `npx vitest --run test/server.test.ts`
 Expected: FAIL — module not found
 
-**Step 3: Implement task queue**
+**Step 3: Implement task queue with worker dispatch**
 
 Create `src/server/queue.ts`:
 ```typescript
 import type { TaskRequest, TaskState } from '../types.js';
+import { fork, type ChildProcess } from 'child_process';
+import { join } from 'path';
 
-// In-memory store for MVP. Replace with BullMQ + Redis in production.
 const tasks = new Map<string, TaskState>();
+const workers = new Map<string, ChildProcess>();
 
 export function enqueueTask(request: TaskRequest): TaskState {
   const state: TaskState = {
@@ -1722,6 +1765,41 @@ export function enqueueTask(request: TaskRequest): TaskState {
   };
   tasks.set(request.id, state);
   return state;
+}
+
+export function dispatchTask(taskId: string): void {
+  const task = tasks.get(taskId);
+  if (!task) throw new Error(`Task ${taskId} not found`);
+
+  task.status = 'running';
+  task.started_at = new Date().toISOString();
+
+  // Fork a child process to run the worker
+  const workerPath = join(import.meta.dirname || __dirname, '..', 'worker', 'process.js');
+  const child = fork(workerPath, [], {
+    env: { ...process.env, MINION_TASK: JSON.stringify(task.request) },
+    stdio: 'pipe',
+  });
+
+  workers.set(taskId, child);
+
+  child.on('message', (msg: any) => {
+    if (msg.type === 'step_completed') {
+      task.steps_completed.push(msg.step_id);
+    } else if (msg.type === 'status_update') {
+      task.status = msg.status;
+      if (msg.mr_url) task.mr_url = msg.mr_url;
+      if (msg.error) task.error = msg.error;
+    }
+  });
+
+  child.on('exit', (code) => {
+    workers.delete(taskId);
+    task.finished_at = new Date().toISOString();
+    if (task.status === 'running') {
+      task.status = code === 0 ? 'done' : 'failed';
+    }
+  });
 }
 
 export function getTask(id: string): TaskState | undefined {
@@ -1746,8 +1824,8 @@ Create `src/server/routes/tasks.ts`:
 ```typescript
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import { enqueueTask, getTask, listTasks } from '../queue.js';
-import type { TaskRequest } from '../../types.js';
+import { enqueueTask, dispatchTask, getTask, listTasks } from '../queue.js';
+import { parseProjectId, type TaskRequest } from '../../types.js';
 
 export async function taskRoutes(app: FastifyInstance) {
   app.post('/api/tasks', {
@@ -1769,6 +1847,7 @@ export async function taskRoutes(app: FastifyInstance) {
     const request: TaskRequest = {
       id: randomUUID(),
       repo_url: body.repo_url,
+      project_id: parseProjectId(body.repo_url),
       description: body.description,
       blueprint: body.blueprint,
       issue_id: body.issue_id,
@@ -1776,7 +1855,8 @@ export async function taskRoutes(app: FastifyInstance) {
       created_at: new Date().toISOString(),
     };
     const state = enqueueTask(request);
-    // TODO: dispatch to worker via BullMQ
+    // Dispatch to worker immediately (MVP: in-process fork)
+    dispatchTask(state.id);
     reply.status(201).send(state);
   });
 
@@ -1799,8 +1879,8 @@ Create `src/server/routes/webhook.ts`:
 ```typescript
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import { enqueueTask } from '../queue.js';
-import type { TaskRequest } from '../../types.js';
+import { enqueueTask, dispatchTask } from '../queue.js';
+import { parseProjectId, type TaskRequest } from '../../types.js';
 
 export async function webhookRoutes(app: FastifyInstance) {
   // GitLab Issue webhook: triggers minion when issue is labeled "minion"
@@ -1813,9 +1893,11 @@ export async function webhookRoutes(app: FastifyInstance) {
       if (!labels.includes('minion')) {
         return reply.status(200).send({ skipped: true });
       }
+      const repoUrl = body.project?.git_http_url || '';
       const request: TaskRequest = {
         id: randomUUID(),
-        repo_url: body.project?.git_http_url || '',
+        repo_url: repoUrl,
+        project_id: repoUrl ? parseProjectId(repoUrl) : '',
         description: body.object_attributes?.description || '',
         issue_id: String(body.object_attributes?.iid || ''),
         title: body.object_attributes?.title || '',
@@ -1823,6 +1905,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         created_at: new Date().toISOString(),
       };
       const state = enqueueTask(request);
+      dispatchTask(state.id);
       return reply.status(201).send(state);
     }
 
@@ -1840,8 +1923,15 @@ import { taskRoutes } from './routes/tasks.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { loadConfig } from '../config/index.js';
 
-export async function buildServer(opts?: { skipQueue?: boolean }) {
-  const app = Fastify({ logger: true });
+export interface ServerOptions {
+  skipDispatch?: boolean;  // Skip worker dispatch in tests
+}
+
+export async function buildServer(opts?: ServerOptions) {
+  const app = Fastify({ logger: !opts?.skipDispatch });
+
+  // Store options for routes to check
+  app.decorate('skipDispatch', opts?.skipDispatch ?? false);
 
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -2038,6 +2128,7 @@ git commit -m "feat: add CLI client with run, status, and list commands"
 
 **Files:**
 - Create: `src/worker/index.ts`
+- Create: `src/worker/process.ts`
 - Create: `test/worker.test.ts`
 
 **Step 1: Write the failing test**
@@ -2144,16 +2235,72 @@ export function createWorker(config: WorkerConfig) {
 }
 ```
 
-**Step 4: Run tests to verify they pass**
+**Step 4: Create worker child process entry point**
+
+Create `src/worker/process.ts`:
+```typescript
+/**
+ * This file is forked as a child process by the Gateway's queue dispatcher.
+ * It reads the task from MINION_TASK env var, executes the blueprint, and
+ * reports status back to the parent process via IPC messages.
+ */
+import { createWorker } from './index.js';
+import { loadConfig } from '../config/index.js';
+import type { TaskRequest } from '../types.js';
+
+async function main() {
+  const taskJson = process.env.MINION_TASK;
+  if (!taskJson) {
+    console.error('MINION_TASK env var not set');
+    process.exit(1);
+  }
+
+  const task: TaskRequest = JSON.parse(taskJson);
+  const config = loadConfig();
+
+  const worker = createWorker({
+    llm: config.llm,
+    gitlab: config.gitlab,
+    blueprintsDir: './blueprints',
+    maxIterations: config.agent.maxIterations,
+  });
+
+  try {
+    process.send?.({ type: 'status_update', status: 'running' });
+
+    const result = await worker.executeTask(task);
+
+    const mrUrl = result.steps.create_mr?.output;
+    process.send?.({
+      type: 'status_update',
+      status: mrUrl ? 'mr_created' : 'done',
+      mr_url: mrUrl,
+    });
+
+    process.exit(0);
+  } catch (e: any) {
+    process.send?.({
+      type: 'status_update',
+      status: 'failed',
+      error: e.message,
+    });
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+**Step 5: Run tests to verify they pass**
 
 Run: `npx vitest --run test/worker.test.ts`
 Expected: All PASS
 
-**Step 5: Commit**
+**Step 6: Commit**
 
 ```bash
-git add src/worker/index.ts test/worker.test.ts
-git commit -m "feat: add worker entry point wiring blueprint engine, agent loop, and tools"
+git add src/worker/index.ts src/worker/process.ts test/worker.test.ts
+git commit -m "feat: add worker entry point and child process runner for task dispatch"
 ```
 
 ---
@@ -2189,10 +2336,25 @@ Create `test/integration.test.ts`:
 ```typescript
 import { describe, it, expect } from 'vitest';
 import { buildServer } from '../src/server/index.js';
+import { parseProjectId } from '../src/types.js';
 
-describe('Integration: API → Queue', () => {
-  it('submits a task via API and gets queued status', async () => {
-    const server = await buildServer({ skipQueue: true });
+describe('parseProjectId', () => {
+  it('parses standard GitLab URL', () => {
+    expect(parseProjectId('https://gitlab.com/group/repo.git')).toBe('group/repo');
+  });
+
+  it('parses nested group URL', () => {
+    expect(parseProjectId('https://gitlab.com/org/team/repo.git')).toBe('org/team/repo');
+  });
+
+  it('throws on invalid URL', () => {
+    expect(() => parseProjectId('not-a-url')).toThrow();
+  });
+});
+
+describe('Integration: API → Queue → Dispatch', () => {
+  it('submits a task, parses project_id, and dispatches', async () => {
+    const server = await buildServer({ skipDispatch: true });
 
     const res = await server.inject({
       method: 'POST',
@@ -2210,6 +2372,7 @@ describe('Integration: API → Queue', () => {
     const task = res.json();
     expect(task.status).toBe('queued');
     expect(task.request.blueprint).toBe('echo-test');
+    expect(task.request.project_id).toBe('test/repo');
 
     // Verify task is retrievable
     const getRes = await server.inject({
@@ -2230,8 +2393,8 @@ describe('Integration: API → Queue', () => {
     await server.close();
   });
 
-  it('handles GitLab webhook with minion label', async () => {
-    const server = await buildServer({ skipQueue: true });
+  it('handles GitLab webhook with minion label and resolves project_id', async () => {
+    const server = await buildServer({ skipDispatch: true });
 
     const res = await server.inject({
       method: 'POST',
@@ -2239,7 +2402,7 @@ describe('Integration: API → Queue', () => {
       headers: { 'x-gitlab-event': 'Issue Hook' },
       payload: {
         labels: [{ title: 'minion' }],
-        project: { git_http_url: 'https://gitlab.com/test/repo.git' },
+        project: { git_http_url: 'https://gitlab.com/mygroup/myrepo.git' },
         object_attributes: {
           iid: 42,
           title: 'Fix login',
@@ -2250,12 +2413,13 @@ describe('Integration: API → Queue', () => {
 
     expect(res.statusCode).toBe(201);
     expect(res.json().request.issue_id).toBe('42');
+    expect(res.json().request.project_id).toBe('mygroup/myrepo');
 
     await server.close();
   });
 
   it('skips GitLab webhook without minion label', async () => {
-    const server = await buildServer({ skipQueue: true });
+    const server = await buildServer({ skipDispatch: true });
 
     const res = await server.inject({
       method: 'POST',
