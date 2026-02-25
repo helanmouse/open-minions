@@ -3,6 +3,7 @@ import { ToolRegistry } from '../src/tools/registry.js';
 import { readTool, writeTool, editTool, listFilesTool } from '../src/tools/file-ops.js';
 import { bashTool } from '../src/tools/bash.js';
 import { searchCodeTool } from '../src/tools/search.js';
+import { gitTool } from '../src/tools/git.js';
 import type { ToolContext } from '../src/types/shared.js';
 import { mkdtempSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -68,5 +69,35 @@ describe('bash tool', () => {
     const ctx = makeCtx(dir);
     const result = await bashTool.execute({ command: 'rm -rf /' }, ctx);
     expect(result.success).toBe(false);
+  });
+});
+
+describe('git tool', () => {
+  it('initializes a repo and commits', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'minion-git-'));
+    const ctx = makeCtx(dir);
+    await gitTool.execute({ command: 'init' }, ctx);
+    await bashTool.execute({ command: 'git config user.email "test@test.com" && git config user.name "Test"' }, ctx);
+    writeFileSync(join(dir, 'hello.txt'), 'world');
+    await gitTool.execute({ command: 'add', args: ['.'] }, ctx);
+    const result = await gitTool.execute({ command: 'commit', args: ['-m', 'init'] }, ctx);
+    expect(result.success).toBe(true);
+  });
+
+  it('generates format-patch', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'minion-git-'));
+    const ctx = makeCtx(dir);
+    await bashTool.execute({
+      command: 'git init && git config user.email "t@t.com" && git config user.name "T"'
+    }, ctx);
+    writeFileSync(join(dir, 'a.txt'), 'v1');
+    await bashTool.execute({ command: 'git add . && git commit -m "initial"' }, ctx);
+    writeFileSync(join(dir, 'a.txt'), 'v2');
+    await bashTool.execute({ command: 'git add . && git commit -m "change"' }, ctx);
+    const result = await gitTool.execute({
+      command: 'format-patch',
+      args: ['HEAD~1', '--output-directory', join(dir, 'patches')],
+    }, ctx);
+    expect(result.success).toBe(true);
   });
 });
