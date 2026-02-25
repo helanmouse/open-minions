@@ -1,17 +1,17 @@
 {
   "name": "minions",
-  "version": "1.0.0",
-  "description": "Inspired by [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents) and [OpenClaw](https://github.com/nichochar/open-claw)'s design philosophy, Open Minions is an open-source, one-shot, end-to-end AI coding agent system built for GitLab CI/CD workflows.",
+  "version": "2.0.0",
+  "description": "Open Minions — autonomous AI coding agents with Docker sandbox isolation",
   "main": "dist/index.js",
   "bin": {
     "minion": "./dist/cli/index.js"
   },
   "scripts": {
     "build": "tsc",
-    "dev:server": "tsx src/server/index.ts",
     "dev:cli": "tsx src/cli/index.ts",
     "test": "vitest --run",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "docker:build": "npm run build && docker build -t minion-base -f docker/Dockerfile.base ."
   },
   "keywords": [],
   "author": "",
