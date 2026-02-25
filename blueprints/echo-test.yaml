@@ -1,0 +1,13 @@
+name: echo-test
+steps:
+  - id: setup
+    type: deterministic
+    action: test_action
+    params:
+      value: "{{task.description}}"
+
+  - id: implement
+    type: agent
+    tools: [read, write]
+    prompt: "Create a file called output.txt with content: {{task.description}}"
+    max_iterations: 3
