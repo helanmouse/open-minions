@@ -96,60 +96,128 @@ your-repo/
 ### Prerequisites
 
 - Node.js >= 18
-- Redis (for task queue)
 - A GitLab account + personal access token
+- LLM API key (OpenAI / Anthropic / 本地 Ollama)
 
-### Install
+### 安装
 
 ```bash
 git clone https://github.com/helanmouse/open-minions.git
 cd open-minions
 npm install
-cp .env.example .env  # configure your LLM keys and GitLab token
 ```
 
-### Configure
+### 配置
 
-Edit `.env`:
+创建 `.env` 文件：
 
 ```bash
+# LLM 配置（三选一）
 LLM_PROVIDER=openai          # openai | anthropic | ollama
-LLM_MODEL=gpt-4o
-LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4o             # 模型名称
+LLM_API_KEY=sk-...           # API 密钥（Ollama 不需要）
+LLM_BASE_URL=                # 可选，自定义 API 地址
+
+# GitLab 配置
 GITLAB_URL=https://gitlab.com
-GITLAB_TOKEN=glpat-...
-REDIS_URL=redis://localhost:6379
+GITLAB_TOKEN=glpat-...       # GitLab Personal Access Token
+
+# 服务配置（可选，以下为默认值）
+MINION_PORT=3000
+MINION_HOST=127.0.0.1
 ```
 
-### Start the server
+### 启动服务
 
 ```bash
+# 启动 Gateway 服务
 npm run dev:server
 ```
 
-### Submit a task via CLI
+服务启动后监听 `http://127.0.0.1:3000`。
+
+### 通过 CLI 提交任务
 
 ```bash
-# Fix a GitLab issue
-npx minion run \
+# 提交一个修复 Issue 的任务
+npx tsx src/cli/index.ts run \
   -r https://gitlab.com/yourgroup/yourrepo.git \
-  -d "Fix the login page crash on empty email" \
+  -d "修复登录页面空邮箱时的崩溃问题" \
   -i 42 \
   -b fix-issue
 
-# Check status
-npx minion status <task-id>
+# 查看任务状态
+npx tsx src/cli/index.ts status <task-id>
 
-# List all tasks
-npx minion list
+# 列出所有任务
+npx tsx src/cli/index.ts list
 ```
 
-### Trigger via GitLab Webhook
+CLI 参数说明：
+- `-r, --repo <url>` — GitLab 仓库地址（必填）
+- `-d, --description <text>` — 任务描述（必填）
+- `-b, --blueprint <name>` — 使用的 Blueprint，默认 `fix-issue`
+- `-i, --issue <id>` — 关联的 GitLab Issue ID
+- `-s, --server <url>` — Gateway 地址，默认 `http://127.0.0.1:3000`
 
-1. Go to your GitLab project → Settings → Webhooks
-2. Add URL: `https://your-server/api/webhook/gitlab`
-3. Select "Issues events"
-4. Add the `minion` label to any issue → agent starts automatically
+### 通过 API 提交任务
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo_url": "https://gitlab.com/yourgroup/yourrepo.git",
+    "description": "添加用户注册的邮箱验证",
+    "blueprint": "fix-issue",
+    "issue_id": "15",
+    "title": "Add email validation"
+  }'
+```
+
+### 通过 GitLab Webhook 自动触发
+
+1. 进入 GitLab 项目 → Settings → Webhooks
+2. URL 填写：`https://your-server/api/webhook/gitlab`
+3. 勾选 "Issues events"
+4. 给任意 Issue 添加 `minion` 标签 → Agent 自动启动
+
+### 为目标仓库配置 Minion
+
+在你希望 Minion 工作的仓库根目录添加配置：
+
+```bash
+# 创建配置目录
+mkdir -p .minion/rules
+
+# 项目配置
+cat > .minion/config.yaml << 'EOF'
+lint_command: "npm run lint"
+test_command: "npm test"
+language: "typescript"
+EOF
+
+# 全局编码规则（可选）
+cat > .minion/rules/global.md << 'EOF'
+- 使用 TypeScript strict 模式
+- 所有公开函数需要 JSDoc 注释
+- 错误处理使用自定义 Error 类
+EOF
+```
+
+也可以在任意子目录放置 `.minion-rules.md`，Agent 进入该目录时会自动加载。
+
+### 开发与测试
+
+```bash
+# 运行所有测试
+npm test
+
+# 类型检查
+npm run lint
+
+# 编译
+npm run build
+```
 
 ## Architecture
 
@@ -172,13 +240,7 @@ npx minion list
 
 ## Project Setup for Your Repo
 
-Add a `.minion/config.yaml` to any repo you want minions to work on:
-
-```yaml
-lint_command: "npm run lint"
-test_command: "npm test"
-language: "typescript"
-```
+详见上方「为目标仓库配置 Minion」章节。
 
 ## Acknowledgments
 
