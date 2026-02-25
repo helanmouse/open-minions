@@ -18,16 +18,15 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@gitbeaker/rest": "^43.8.0",
-    "bullmq": "^5.70.1",
     "commander": "^14.0.3",
+    "dockerode": "^4.0.9",
     "dotenv": "^17.3.1",
-    "fastify": "^5.7.4",
     "js-yaml": "^4.1.1",
     "typescript": "^5.9.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/dockerode": "^4.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.0",
     "tsx": "^4.21.0",
