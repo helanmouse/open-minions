@@ -1,5 +1,5 @@
 import type { LLMAdapter, LLMConfig } from './types.js';
-import type { Message, ToolDef, LLMEvent } from '../types.js';
+import type { Message, ToolDef, LLMEvent } from '../types/shared.js';
 
 export class AnthropicAdapter implements LLMAdapter {
   provider = 'anthropic';

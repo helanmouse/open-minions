@@ -1,6 +1,6 @@
 import type { LLMAdapter } from '../llm/types.js';
 import type { ToolRegistry } from '../tools/registry.js';
-import type { Message, LLMEvent, ToolContext } from '../types.js';
+import type { Message, LLMEvent, ToolContext } from '../types/shared.js';
 
 export interface AgentLoopOptions {
   maxIterations: number;

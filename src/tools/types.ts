@@ -1,4 +1,4 @@
-import type { ToolContext, ToolDef, ToolResult } from '../types.js';
+import type { ToolContext, ToolDef, ToolResult } from '../types/shared.js';
 
 export interface AgentTool {
   name: string;

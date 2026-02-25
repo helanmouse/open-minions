@@ -3,15 +3,18 @@ import { ToolRegistry } from '../src/tools/registry.js';
 import { readTool, writeTool, editTool, listFilesTool } from '../src/tools/file-ops.js';
 import { bashTool } from '../src/tools/bash.js';
 import { searchCodeTool } from '../src/tools/search.js';
-import type { ToolContext } from '../src/types.js';
+import type { ToolContext } from '../src/types/shared.js';
 import { mkdtempSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
 const makeCtx = (workdir: string): ToolContext => ({
   workdir,
-  task: { id: '1', repo_url: '', project_id: '', description: '', blueprint: 'test', created_at: '' },
-  stepResults: {},
+  task: {
+    id: '1', description: 'test', repo: '/tmp/test', repoType: 'local' as const,
+    branch: 'minion/1', baseBranch: 'main', push: false,
+    maxIterations: 50, timeout: 30, created_at: '',
+  },
 });
 
 describe('ToolRegistry', () => {

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { AgentLoop } from '../src/worker/agent-loop.js';
 import { ToolRegistry } from '../src/tools/registry.js';
 import type { LLMAdapter } from '../src/llm/types.js';
-import type { Message, ToolDef, LLMEvent, ToolContext } from '../src/types.js';
+import type { Message, ToolDef, LLMEvent, ToolContext } from '../src/types/shared.js';
 import { mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -20,8 +20,11 @@ function makeMockLLM(responses: LLMEvent[][]): LLMAdapter {
 
 const makeCtx = (): ToolContext => ({
   workdir: mkdtempSync(join(tmpdir(), 'minion-test-')),
-  task: { id: '1', repo_url: '', project_id: '', description: '', blueprint: 'test', created_at: '' },
-  stepResults: {},
+  task: {
+    id: '1', description: 'test', repo: '/tmp/test', repoType: 'local' as const,
+    branch: 'minion/1', baseBranch: 'main', push: false,
+    maxIterations: 50, timeout: 30, created_at: '',
+  },
 });
 
 describe('AgentLoop', () => {

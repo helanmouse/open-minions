@@ -1,4 +1,4 @@
-import type { Message, ToolDef, LLMEvent } from '../types.js';
+import type { Message, ToolDef, LLMEvent } from '../types/shared.js';
 
 export interface LLMAdapter {
   provider: string;
