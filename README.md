@@ -63,8 +63,8 @@ User: "Fix login page crash when email is empty"
 - **Docker Sandbox Isolation** — All code execution happens in a secure container
 - **Offline Runtime** — pi-runtime pre-built on host, mounted to containers
 - **Patch-Based Delivery** — Results via `git format-patch` → `git am`
-- **Multiple LLM Providers** — OpenAI, Anthropic, Google, DeepSeek, Zhipu, and more
-- **Interactive Setup** — `minion setup` command for easy configuration
+- **Multiple LLM Providers** — 25 supported providers including OpenAI, Anthropic, Google, DeepSeek, Zhipu, and more
+- **Interactive TUI Setup** — Terminal-based UI for easy configuration with keyboard navigation
 
 ### Quick Start
 
@@ -97,6 +97,12 @@ This pre-builds pi-mono packages in `~/.minion/pi-runtime/` which are then mount
 ```bash
 minion setup
 ```
+
+This launches an interactive Terminal UI (TUI) for configuration:
+- Use arrow keys to navigate between providers and models
+- Press Enter to select a provider/model
+- Press Escape to go back
+- The TUI supports 25 LLM providers out of the box
 
 Or manually configure with environment variables:
 
@@ -222,8 +228,8 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 - **Docker 沙箱隔离** — 所有代码执行都在安全容器中进行
 - **离线运行时** — pi-runtime 在宿主机预构建，挂载到容器内
 - **补丁交付** — 通过 `git format-patch` → `git am` 交付结果
-- **多 LLM 支持** — OpenAI、Anthropic、Google、DeepSeek、智谱等
-- **交互式配置** — `minion setup` 命令简化配置
+- **多 LLM 支持** — 支持 25 个 LLM 提供商，包括 OpenAI、Anthropic、Google、DeepSeek、智谱等
+- **交互式 TUI 配置** — 终端图形界面，支持键盘导航，配置更便捷
 
 ### 快速开始
 
@@ -256,6 +262,12 @@ npm run build:sandbox
 ```bash
 minion setup
 ```
+
+这将启动交互式终端界面（TUI）进行配置：
+- 使用方向键在提供商和模型之间导航
+- 按 Enter 选择提供商/模型
+- 按 Escape 返回上一级
+- TUI 原生支持 25 个 LLM 提供商
 
 或手动配置环境变量：
 
