@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseTaskDescription } from '../src/host-agent/task-parser.js';
+import { createLLMAdapter } from '../src/llm/factory.js';
 import type { LLMAdapter } from '../src/llm/types.js';
 import type { Message, ToolDef, LLMEvent } from '../src/types/shared.js';
 
@@ -39,5 +40,14 @@ describe('parseTaskDescription', () => {
     );
     expect(result.repoUrl).toBe('https://github.com/user/repo.git');
     expect(result.issueUrl).toBe('https://github.com/user/repo/issues/42');
+  });
+
+  it('works with pi-ai provider', () => {
+    const llm = createLLMAdapter({
+      provider: 'pi-ai',
+      model: 'gpt-4o',
+      apiKey: process.env.LLM_API_KEY || 'test',
+    });
+    expect(llm.provider).toBe('pi-ai');
   });
 });
