@@ -13,6 +13,7 @@ import { TaskStore } from '../task/store.js';
 import { DockerSandbox } from '../sandbox/docker.js';
 import { HostAgent } from '../host-agent/index.js';
 import { MinionsConfig } from '../host-agent/config.js';
+import { TuiSetup } from './setup/index.js';
 
 export interface CliArgs {
   command: string;
@@ -166,66 +167,44 @@ program
   .description('Configure LLM provider and API key')
   .action(async () => {
     const minionHome = join(homedir(), '.minion');
-    const config = new MinionsConfig(process.cwd(), minionHome);
 
     console.log('Minions V3 Setup\n');
 
-    // Simple prompt-based setup
-    const readline = (await import('readline')).createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    const question = (prompt: string): Promise<string> =>
-      new Promise(resolve => readline.question(prompt, resolve));
+    const setup = new TuiSetup(minionHome);
 
     try {
-      const provider = await question('LLM Provider (openai/anthropic/zhipu/deepseek) [openai]: ') || 'openai';
-      const model = await question(`Model name [gpt-4o]: `) || 'gpt-4o';
-      const apiKey = await question('API Key: ');
+      // Simple prompt-based setup as fallback until interactive TUI is complete
+      const readline = (await import('readline')).createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
 
-      if (!apiKey) {
-        console.error('API Key is required');
-        process.exit(1);
+      const question = (prompt: string): Promise<string> =>
+        new Promise(resolve => readline.question(prompt, resolve));
+
+      try {
+        const provider = await question('LLM Provider (openai/anthropic/zhipu/deepseek) [openai]: ') || 'openai';
+        const model = await question(`Model name [gpt-4o]: `) || 'gpt-4o';
+        const apiKey = await question('API Key: ');
+
+        if (!apiKey) {
+          console.error('API Key is required');
+          process.exit(1);
+        }
+
+        // Use TuiSetup to save the configuration
+        setup.setMockConfig({ provider, model, apiKey });
+        const result = await setup.run();
+
+        console.log(`\n✓ Configuration saved to ${minionHome}/.pi/`);
+        console.log(`  Provider: ${result.config.provider}`);
+        console.log(`  Model: ${result.config.model}`);
+      } finally {
+        readline.close();
       }
-
-      // Save to .pi/models.json and .pi/config.json
-      const { mkdirSync, writeFileSync } = await import('fs');
-      const { join: pathJoin } = await import('path');
-
-      const piDir = pathJoin(minionHome, '.pi');
-      mkdirSync(piDir, { recursive: true });
-
-      // Save models.json
-      writeFileSync(
-        pathJoin(piDir, 'models.json'),
-        JSON.stringify({
-          providers: {
-            [provider]: {
-              baseUrl: provider === 'deepseek' ? 'https://api.deepseek.com/v1' : undefined,
-              apiKey: `$${provider.toUpperCase()}_API_KEY`,
-              api: 'openai-completions',
-              models: [{ id: model, name: model, reasoning: false, input: ['text'] }],
-            },
-          },
-        }, null, 2),
-      );
-
-      // Save config.json with API key
-      writeFileSync(
-        pathJoin(piDir, 'config.json'),
-        JSON.stringify({
-          defaultProvider: provider,
-          defaultModel: model,
-          apiKeys: { [provider]: apiKey },
-        }, null, 2),
-      );
-
-      console.log(`\n✓ Configuration saved to ${piDir}/`);
-      console.log(`  Provider: ${provider}`);
-      console.log(`  Model: ${model}`);
-    } finally {
-      readline.close();
+    } catch (error: any) {
+      console.error(`Setup failed: ${error.message}`);
+      process.exit(1);
     }
   });
 
