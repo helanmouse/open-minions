@@ -1,9 +1,9 @@
-import { getModel, streamSimple, type Model, type Context } from '@mariozechner/pi-ai';
-import type { LLMAdapter } from './types.js';
+import { getModel, streamSimple, type Model, type Context, type Tool } from '@mariozechner/pi-ai';
+import type { LLMAdapter, LLMConfig } from './types.js';
 import type { Message as MinionsMessage, ToolDef, LLMEvent } from '../types/shared.js';
 
 export interface PiAiConfig {
-  provider: string;
+  provider: 'pi-ai' | 'pi';
   model: string;
   apiKey: string;
   baseUrl?: string;
@@ -25,7 +25,7 @@ export class PiAiAdapter implements LLMAdapter {
     const piMessages = messages.map(m => this.convertMessage(m));
 
     // Convert minions tools to pi-ai format
-    const piTools = tools.map(t => ({
+    const piTools: any[] = tools.map(t => ({
       name: t.name,
       description: t.description,
       parameters: t.parameters,
