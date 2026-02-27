@@ -11,8 +11,13 @@ describe('ProviderSelector', () => {
 
     const providers = selector.getProviders();
     expect(providers.length).toBeGreaterThan(0);
-    expect(providers).toContain('openai');
-    expect(providers).toContain('anthropic');
+    expect(providers.some(p => p.id === 'openai')).toBe(true);
+    expect(providers.some(p => p.id === 'anthropic')).toBe(true);
+
+    const openai = providers.find(p => p.id === 'openai');
+    expect(openai).toBeDefined();
+    expect(openai?.label).toBe('OpenAI');
+    expect(openai?.description).toBe('GPT-4o, GPT-4o-mini, o1, o3-mini');
   });
 
   it('should call onSelect when provider selected', async () => {
