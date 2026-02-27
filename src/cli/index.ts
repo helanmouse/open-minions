@@ -12,6 +12,7 @@ import { createLLMAdapter } from '../llm/factory.js';
 import { TaskStore } from '../task/store.js';
 import { DockerSandbox } from '../sandbox/docker.js';
 import { HostAgent } from '../host-agent/index.js';
+import { MinionsConfig } from '../host-agent/config.js';
 
 export interface CliArgs {
   command: string;
@@ -158,6 +159,102 @@ program
   .argument('[id]', 'Task ID (omit to clean all completed)')
   .action((id) => {
     console.log('TODO: implement cleanup');
+  });
+
+program
+  .command('setup')
+  .description('Configure LLM provider and API key')
+  .action(async () => {
+    const minionHome = join(homedir(), '.minion');
+    const config = new MinionsConfig(process.cwd(), minionHome);
+
+    console.log('Minions V3 Setup\n');
+
+    // Simple prompt-based setup
+    const readline = (await import('readline')).createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const question = (prompt: string): Promise<string> =>
+      new Promise(resolve => readline.question(prompt, resolve));
+
+    try {
+      const provider = await question('LLM Provider (openai/anthropic/zhipu/deepseek) [openai]: ') || 'openai';
+      const model = await question(`Model name [gpt-4o]: `) || 'gpt-4o';
+      const apiKey = await question('API Key: ');
+
+      if (!apiKey) {
+        console.error('API Key is required');
+        process.exit(1);
+      }
+
+      // Save to .pi/models.json and .pi/config.json
+      const { mkdirSync, writeFileSync } = await import('fs');
+      const { join: pathJoin } = await import('path');
+
+      const piDir = pathJoin(minionHome, '.pi');
+      mkdirSync(piDir, { recursive: true });
+
+      // Save models.json
+      writeFileSync(
+        pathJoin(piDir, 'models.json'),
+        JSON.stringify({
+          providers: {
+            [provider]: {
+              baseUrl: provider === 'deepseek' ? 'https://api.deepseek.com/v1' : undefined,
+              apiKey: `$${provider.toUpperCase()}_API_KEY`,
+              api: 'openai-completions',
+              models: [{ id: model, name: model, reasoning: false, input: ['text'] }],
+            },
+          },
+        }, null, 2),
+      );
+
+      // Save config.json with API key
+      writeFileSync(
+        pathJoin(piDir, 'config.json'),
+        JSON.stringify({
+          defaultProvider: provider,
+          defaultModel: model,
+          apiKeys: { [provider]: apiKey },
+        }, null, 2),
+      );
+
+      console.log(`\n✓ Configuration saved to ${piDir}/`);
+      console.log(`  Provider: ${provider}`);
+      console.log(`  Model: ${model}`);
+    } finally {
+      readline.close();
+    }
+  });
+
+program
+  .command('config')
+  .description('View current configuration')
+  .action(async () => {
+    const minionHome = join(homedir(), '.minion');
+    const config = new MinionsConfig(process.cwd(), minionHome);
+
+    try {
+      const model = await config.getModel();
+      const llmConfig = config.getLLMConfig();
+      const extra = config.getExtraConfig();
+
+      console.log('Current Configuration:');
+      console.log(`  Provider: ${model.provider}`);
+      console.log(`  Model: ${model.id}`);
+      console.log(`  Base URL: ${llmConfig.baseUrl || '(default)'}`);
+      console.log(`  API Key: ${llmConfig.apiKey ? '(set)' : '(not set)'}`);
+      console.log('\nSandbox:');
+      console.log(`  Memory: ${extra.sandbox.memory}`);
+      console.log(`  CPUs: ${extra.sandbox.cpus}`);
+      console.log(`  Network: ${extra.sandbox.network}`);
+      console.log(`  Runtime: ${extra.pi.runtimeDir}`);
+    } catch (e: any) {
+      console.error(`Error loading config: ${e.message}`);
+      console.log('\nRun "minion setup" to configure.');
+    }
   });
 
 // Run CLI when executed directly
