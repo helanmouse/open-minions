@@ -69,7 +69,7 @@ program
     const minionHome = join(homedir(), '.minion');
     const config = loadConfig();
     const llm = createLLMAdapter(config.llm);
-    const sandbox = new DockerSandbox();
+    const sandbox = new DockerSandbox(minionHome);
     const store = new TaskStore(join(minionHome, 'tasks.json'));
     const agent = new HostAgent({ llm, sandbox, store, minionHome });
 

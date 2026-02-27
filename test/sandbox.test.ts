@@ -51,4 +51,22 @@ describe('DockerSandbox', () => {
     // Just verify the method doesn't throw
     expect(containerOpts).toBeDefined();
   });
+
+  it('mounts pi-runtime and sets entrypoint', () => {
+    const sandbox = new DockerSandbox('/home/user/.minion');
+    const config: SandboxConfig = {
+      image: 'node:22-slim',
+      repoPath: '/path/to/repo',
+      runDir: '/home/user/.minion/runs/abc123',
+      memory: '4g',
+      cpus: 2,
+      network: 'bridge',
+    };
+
+    const opts = sandbox.buildContainerOptions(config);
+    expect(opts.Entrypoint).toEqual(['/minion-bootstrap.sh']);
+    expect(opts.HostConfig.Binds).toContain(
+      '/home/user/.minion/pi-runtime:/opt/pi-runtime:ro'
+    );
+  });
 });
