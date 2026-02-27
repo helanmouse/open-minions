@@ -1,5 +1,5 @@
 import Dockerode from 'dockerode';
-import { platform } from 'os';
+import { platform, homedir } from 'os';
 import { join, dirname } from 'path';
 import { existsSync } from 'fs';
 import type { Sandbox, SandboxConfig, SandboxHandle } from './types.js';
@@ -18,9 +18,11 @@ function parseMemory(mem: string): number {
 
 export class DockerSandbox implements Sandbox {
   private docker: Dockerode;
+  private minionHome: string;
 
-  constructor() {
+  constructor(minionHome?: string) {
     this.docker = new Dockerode();
+    this.minionHome = minionHome || join(homedir(), '.minion');
   }
 
   buildContainerOptions(config: SandboxConfig): Record<string, any> {
@@ -29,9 +31,17 @@ export class DockerSandbox implements Sandbox {
     if (process.env.HTTPS_PROXY) env.push(`HTTPS_PROXY=${process.env.HTTPS_PROXY}`);
     if (process.env.NO_PROXY) env.push(`NO_PROXY=${process.env.NO_PROXY}`);
 
+    // Add pi-runtime environment
+    env.push(`PI_RUNTIME=/opt/pi-runtime`);
+
+    const bootstrapPath = join(this.minionHome, 'bootstrap.sh');
+    const piRuntimePath = join(this.minionHome, 'pi-runtime');
+
     const binds: string[] = [
       `${config.repoPath}:/host-repo:ro`,
       `${config.runDir}:/minion-run`,
+      `${bootstrapPath}:/minion-bootstrap.sh:ro`,
+      `${piRuntimePath}:/opt/pi-runtime:ro`,  // Key: offline mount pi-runtime
     ];
 
     // Always mount dist/ directory for development
@@ -68,9 +78,8 @@ export class DockerSandbox implements Sandbox {
         NanoCpus: config.cpus * 1e9,
         NetworkMode: config.network,
       },
-      // Always override the command to run the sandbox agent
-      Cmd: ['node', 'dist/agent/main.js'],
-      WorkingDir: '/opt/minion',
+      Entrypoint: ['/minion-bootstrap.sh'],
+      Cmd: [],
     };
 
     if (platform() === 'linux') {

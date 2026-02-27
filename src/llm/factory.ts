@@ -3,6 +3,7 @@ import { OpenAIAdapter } from './openai.js';
 import { AnthropicAdapter } from './anthropic.js';
 import { ZhipuAdapter } from './zhipu.js';
 import { OllamaAdapter } from './ollama.js';
+import { PiAiAdapter } from './pi-ai-adapter.js';
 
 export function createLLMAdapter(config: LLMConfig): LLMAdapter {
   switch (config.provider) {
@@ -14,6 +15,9 @@ export function createLLMAdapter(config: LLMConfig): LLMAdapter {
       return new ZhipuAdapter(config);
     case 'ollama':
       return new OllamaAdapter(config);
+    case 'pi-ai':
+    case 'pi':
+      return new PiAiAdapter(config as any);
     default:
       throw new Error(`Unknown LLM provider: ${config.provider}`);
   }

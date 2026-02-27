@@ -12,6 +12,8 @@ import { createLLMAdapter } from '../llm/factory.js';
 import { TaskStore } from '../task/store.js';
 import { DockerSandbox } from '../sandbox/docker.js';
 import { HostAgent } from '../host-agent/index.js';
+import { MinionsConfig } from '../host-agent/config.js';
+import { TuiSetup } from './setup/index.js';
 
 export interface CliArgs {
   command: string;
@@ -69,7 +71,7 @@ program
     const minionHome = join(homedir(), '.minion');
     const config = loadConfig();
     const llm = createLLMAdapter(config.llm);
-    const sandbox = new DockerSandbox();
+    const sandbox = new DockerSandbox(minionHome);
     const store = new TaskStore(join(minionHome, 'tasks.json'));
     const agent = new HostAgent({ llm, sandbox, store, minionHome });
 
@@ -158,6 +160,80 @@ program
   .argument('[id]', 'Task ID (omit to clean all completed)')
   .action((id) => {
     console.log('TODO: implement cleanup');
+  });
+
+program
+  .command('setup')
+  .description('Configure LLM provider and API key')
+  .action(async () => {
+    const minionHome = join(homedir(), '.minion');
+
+    console.log('Minions V3 Setup\n');
+
+    const setup = new TuiSetup(minionHome);
+
+    try {
+      // Simple prompt-based setup as fallback until interactive TUI is complete
+      const readline = (await import('readline')).createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+
+      const question = (prompt: string): Promise<string> =>
+        new Promise(resolve => readline.question(prompt, resolve));
+
+      try {
+        const provider = await question('LLM Provider (openai/anthropic/zhipu/deepseek) [openai]: ') || 'openai';
+        const model = await question(`Model name [gpt-4o]: `) || 'gpt-4o';
+        const apiKey = await question('API Key: ');
+
+        if (!apiKey) {
+          console.error('API Key is required');
+          process.exit(1);
+        }
+
+        // Use TuiSetup to save the configuration
+        setup.setMockConfig({ provider, model, apiKey });
+        const result = await setup.run();
+
+        console.log(`\n✓ Configuration saved to ${minionHome}/.pi/`);
+        console.log(`  Provider: ${result.config.provider}`);
+        console.log(`  Model: ${result.config.model}`);
+      } finally {
+        readline.close();
+      }
+    } catch (error: any) {
+      console.error(`Setup failed: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('config')
+  .description('View current configuration')
+  .action(async () => {
+    const minionHome = join(homedir(), '.minion');
+    const config = new MinionsConfig(process.cwd(), minionHome);
+
+    try {
+      const model = await config.getModel();
+      const llmConfig = config.getLLMConfig();
+      const extra = config.getExtraConfig();
+
+      console.log('Current Configuration:');
+      console.log(`  Provider: ${model.provider}`);
+      console.log(`  Model: ${model.id}`);
+      console.log(`  Base URL: ${llmConfig.baseUrl || '(default)'}`);
+      console.log(`  API Key: ${llmConfig.apiKey ? '(set)' : '(not set)'}`);
+      console.log('\nSandbox:');
+      console.log(`  Memory: ${extra.sandbox.memory}`);
+      console.log(`  CPUs: ${extra.sandbox.cpus}`);
+      console.log(`  Network: ${extra.sandbox.network}`);
+      console.log(`  Runtime: ${extra.pi.runtimeDir}`);
+    } catch (e: any) {
+      console.error(`Error loading config: ${e.message}`);
+      console.log('\nRun "minion setup" to configure.');
+    }
   });
 
 // Run CLI when executed directly
