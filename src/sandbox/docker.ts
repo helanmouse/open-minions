@@ -1,5 +1,7 @@
 import Dockerode from 'dockerode';
 import { platform } from 'os';
+import { join, dirname } from 'path';
+import { existsSync } from 'fs';
 import type { Sandbox, SandboxConfig, SandboxHandle } from './types.js';
 
 function parseMemory(mem: string): number {
@@ -32,12 +34,29 @@ export class DockerSandbox implements Sandbox {
       `${config.runDir}:/minion-run`,
     ];
 
-    // Development mode: mount dist/ directory to use latest code
-    // This allows code changes without rebuilding the image
-    const devDistPath = process.env.MINION_DIST_PATH;
-    if (devDistPath) {
-      binds.push(`${devDistPath}:/opt/minion/dist:ro`);
+    // Always mount dist/ directory for development
+    // Priority: MINION_DIST_PATH env var -> {repoPath}/dist -> {repoPath}/../dist
+    let distPath = process.env.MINION_DIST_PATH;
+
+    if (!distPath) {
+      // Try to find dist/ directory relative to repoPath
+      const repoDist = join(config.repoPath, 'dist');
+      const parentDist = join(config.repoPath, '..', 'dist');
+      const cwdDist = join(process.cwd(), 'dist');
+
+      if (existsSync(repoDist)) {
+        distPath = repoDist;
+      } else if (existsSync(parentDist)) {
+        distPath = parentDist;
+      } else if (existsSync(cwdDist)) {
+        distPath = cwdDist;
+      }
+    }
+
+    if (distPath && existsSync(distPath)) {
+      binds.push(`${distPath}:/opt/minion/dist:ro`);
       env.push('MINION_DEV_MODE=1');
+      env.push(`MINION_DIST_MOUNTED=${distPath}`);
     }
 
     const opts: Record<string, any> = {

@@ -7,13 +7,13 @@ function logLLM(direction: 'REQ' | 'RES', data: unknown): void {
 }
 
 /**
- * Zhipu AI (智谱 AI) Adapter
+ * Zhipu GLM Adapter
  *
- * Zhipu provides an Anthropic-compatible API with some differences:
- * - Base URL: https://open.bigmodel.cn/api/anthropic
- * - Does NOT support role='tool' messages
- * - Tool results must be sent as user messages with special formatting
- * - Tool calls use content array with tool_use blocks
+ * Official GLM API using OpenAI-compatible format:
+ * - Base URL: https://open.bigmodel.cn/api/paas/v4
+ * - Endpoint: /chat/completions
+ * - Authorization: Bearer {api_key}
+ * - Format: OpenAI-compatible (messages array, tools array)
  */
 export class ZhipuAdapter implements LLMAdapter {
   provider = 'zhipu';
@@ -24,74 +24,85 @@ export class ZhipuAdapter implements LLMAdapter {
   }
 
   async *chat(messages: Message[], tools: ToolDef[]): AsyncIterable<LLMEvent> {
-    // Zhipu API base URL
-    const baseUrl = this.config.baseUrl || 'https://open.bigmodel.cn/api/anthropic';
-    // Ensure baseUrl ends with /v1
-    const apiBaseUrl = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+    // GLM official API base URL
+    const baseUrl = this.config.baseUrl || 'https://open.bigmodel.cn/api/paas/v4';
+    const apiUrl = `${baseUrl}/chat/completions`;
 
+    // Extract system message
     const systemMsg = messages.find(m => m.role === 'system');
-    const nonSystemMsgs = messages.filter(m => m.role !== 'system');
 
-    // Convert messages to Zhipu format
-    // Zhipu doesn't support role='tool', so we convert tool results to user messages
+    // Convert messages to GLM/OpenAI format
     const apiMessages: any[] = [];
 
-    for (const msg of nonSystemMsgs) {
-      if (msg.role === 'tool') {
-        // Convert tool result to user message format
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        continue; // Handle separately
+      } else if (msg.role === 'tool') {
+        // Tool result - add as user message with tool result format
         apiMessages.push({
           role: 'user',
           content: `[Tool Result for ${msg.tool_call_id}]:\n${msg.content}`,
         });
       } else if (msg.role === 'assistant') {
-        const assistantMsg: any = { role: 'assistant', content: msg.content || [] };
+        const assistantMsg: any = { role: 'assistant', content: msg.content || '' };
         if (msg.tool_calls && msg.tool_calls.length > 0) {
-          // Zhipu format: tool_use blocks in content array
-          const blocks: any[] = msg.content ? [{ type: 'text', text: msg.content }] : [];
-          for (const tc of msg.tool_calls) {
-            blocks.push({
-              type: 'tool_use',
-              id: tc.id,
+          // GLM uses OpenAI tool_calls format
+          assistantMsg.tool_calls = msg.tool_calls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: {
               name: tc.name,
-              input: JSON.parse(tc.arguments),
-            });
-          }
-          assistantMsg.content = blocks;
+              arguments: tc.arguments,
+            },
+          }));
         }
         apiMessages.push(assistantMsg);
       } else {
-        // user messages
+        // user message
         apiMessages.push(msg);
+      }
+    }
+
+    // Prepend system message to first user message if exists
+    if (systemMsg && apiMessages.length > 0) {
+      const firstUserMsg = apiMessages.find(m => m.role === 'user');
+      if (firstUserMsg) {
+        firstUserMsg.content = `${systemMsg.content}\n\n${firstUserMsg.content}`;
       }
     }
 
     const body: Record<string, unknown> = {
       model: this.config.model,
-      max_tokens: 8192,
       messages: apiMessages,
+      max_tokens: 8192,
+      temperature: 0.7,
     };
-    if (systemMsg) body.system = systemMsg.content;
+
+    // Add tools if available (OpenAI format)
     if (tools.length > 0) {
       body.tools = tools.map(t => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.parameters,
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        },
       }));
+      body.tool_choice = 'auto';
     }
 
     logLLM('REQ', JSON.stringify({
+      url: apiUrl,
       model: this.config.model,
-      system: systemMsg?.content?.substring(0, 100) + '...',
-      messages: nonSystemMsgs.length,
+      messages: apiMessages.length,
       tools: tools.length,
     }));
 
-    const res = await fetch(`${apiBaseUrl}/messages`, {
+    const res = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.apiKey}`,
-        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
     });
@@ -105,25 +116,40 @@ export class ZhipuAdapter implements LLMAdapter {
 
     const data = await res.json() as any;
     logLLM('RES', JSON.stringify({
-      type: data.type,
-      content_blocks: data.content?.length || 0,
+      id: data.id,
+      model: data.model,
+      choices: data.choices?.length,
       usage: data.usage,
-      full_response: JSON.stringify(data).substring(0, 1000),
     }));
 
-    for (const block of data.content || []) {
-      if (block.type === 'text') {
-        yield { type: 'text_delta', content: block.text };
-      } else if (block.type === 'tool_use') {
-        logLLM('RES', `Tool call: ${block.name}`);
-        yield {
-          type: 'tool_call',
-          id: block.id,
-          name: block.name,
-          arguments: JSON.stringify(block.input),
-        };
+    if (!data.choices || data.choices.length === 0) {
+      yield { type: 'error', error: 'Zhipu API: No choices returned' };
+      return;
+    }
+
+    const choice = data.choices[0];
+    const message = choice.message;
+
+    // Output text content
+    if (message.content) {
+      yield { type: 'text_delta', content: message.content };
+    }
+
+    // Handle tool calls (OpenAI format)
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      for (const tc of message.tool_calls) {
+        if (tc.type === 'function') {
+          logLLM('RES', `Tool call: ${tc.function.name}`);
+          yield {
+            type: 'tool_call',
+            id: tc.id,
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+          };
+        }
       }
     }
+
     yield { type: 'done', usage: data.usage };
   }
 }

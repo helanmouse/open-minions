@@ -13,14 +13,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Create workspace directory
-RUN mkdir -p /workspace /minion-run/patches
+# Create runtime directories
+RUN mkdir -p /opt/minion /minion-run/patches
 
-# Copy Sandbox Agent code
 WORKDIR /opt/minion
-COPY package.json package-lock.json ./
-RUN npm ci --production
-COPY dist/ ./dist/
 
-# Entry point: run Sandbox Agent
-CMD ["node", "dist/agent/main.js"]
+# Copy dependencies and install
+COPY package.json package-lock.json* ./
+RUN npm ci --production
+
+# Note: Application code will be mounted via volume at runtime
+# Use: docker run -v /path/to/minions/dist:/opt/minion/dist:ro ...
+# Entry point will be overridden by host agent
+CMD ["tail", "-f", "/dev/null"]
