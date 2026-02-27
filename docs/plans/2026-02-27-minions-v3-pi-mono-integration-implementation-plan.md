@@ -4,9 +4,9 @@
 
 **Goal:** 全量迁移 minions 的 Agent 运行时到 pi-mono 框架，保留 Docker 沙箱和 git format-patch 交付等差异化特性。
 
-**Architecture:** Host Agent (minions 自研，保留 Docker/patch) → Docker 容器 → bootstrap.sh → pi-agent-core + pi-ai + pi-extensions。支持用户自定义镜像，bootstrap 自动安装 pi-runtime。
+**Architecture:** Host Agent (minions 自研，保留 Docker/patch) → Docker 容器 → bootstrap.sh → sandbox-main.ts (Agent class) + pi-ai + pi-agent-core + coding-agent tools。宿主机预构建 pi-runtime，通过 Docker 挂载到容器内（离线优先）。
 
-**Tech Stack:** TypeScript, Node.js, Docker, dockerode, pi-ai, pi-agent-core, pi-extensions, Commander.js
+**Tech Stack:** TypeScript, Node.js, Docker, dockerode, @mariozechner/pi-ai, @mariozechner/pi-agent-core, @mariozechner/coding-agent, @sinclair/typebox, Commander.js
 
 ---
 
@@ -19,23 +19,28 @@
 
 **Step 1: Add pi-ai dependency**
 
-Run: `npm install @pi-monospace/ai --save`
+```bash
+npm install @mariozechner/pi-ai --save
+npm install @sinclair/typebox --save  # Required for tool parameters
+```
 
 **Step 2: Verify installation**
 
-Run: `ls node_modules/@pi-monospace/ai`
+```bash
+ls node_modules/@mariozechner/pi-ai
+```
 Expected: Directory exists with package.json
 
 **Step 3: Commit**
 
 ```bash
 git add package.json package-lock.json
-git commit -m "deps: add @pi-monospace/ai dependency"
+git commit -m "deps: add @mariozechner/pi-ai and @sinclair/typebox"
 ```
 
 ---
 
-### Task 2: Create pi-ai Adapter (Temporary Compatibility Layer)
+### Task 2: Create pi-ai Adapter
 
 **Files:**
 - Create: `src/llm/pi-ai-adapter.ts`
@@ -78,7 +83,6 @@ describe('PiAiAdapter', () => {
       // May fail without real API key
     }
 
-    // Verify we got some events structure
     expect(Array.isArray(events)).toBe(true);
   });
 });
@@ -86,7 +90,9 @@ describe('PiAiAdapter', () => {
 
 **Step 2: Run test to verify it fails**
 
-Run: `npx vitest --run test/pi-ai-adapter.test.ts`
+```bash
+npx vitest --run test/pi-ai-adapter.test.ts
+```
 Expected: FAIL - module not found
 
 **Step 3: Implement PiAiAdapter**
@@ -94,9 +100,9 @@ Expected: FAIL - module not found
 Create `src/llm/pi-ai-adapter.ts`:
 
 ```typescript
-import { PiAI } from '@pi-monospace/ai';
+import { getModel, streamSimple, type Model, type Context } from '@mariozechner/pi-ai';
 import type { LLMAdapter } from './types.js';
-import type { Message, ToolDef, LLMEvent } from '../types/shared.js';
+import type { Message as MinionsMessage, ToolDef, LLMEvent } from '../types/shared.js';
 
 export interface PiAiConfig {
   provider: string;
@@ -107,66 +113,93 @@ export interface PiAiConfig {
 
 export class PiAiAdapter implements LLMAdapter {
   provider = 'pi-ai';
-  private pi: PiAI;
+  private model: Model<any>;
+  private apiKey: string;
 
   constructor(config: PiAiConfig) {
-    this.pi = new PiAI({
-      provider: config.provider as any,
-      model: config.model,
-      apiKey: config.apiKey,
-      baseUrl: config.baseUrl,
-    });
+    // Use getModel() factory, not new PiAI()
+    this.model = getModel(config.provider as any, config.model as any);
+    this.apiKey = config.apiKey;
   }
 
-  async *chat(messages: Message[], tools: ToolDef[]): AsyncGenerator<LLMEvent> {
+  async *chat(messages: MinionsMessage[], tools: ToolDef[]): AsyncGenerator<LLMEvent> {
     // Convert minions messages to pi-ai format
-    const piMessages = messages.map(m => ({
-      role: m.role,
-      content: m.content,
-      toolCallId: m.tool_call_id,
-      toolCalls: m.tool_calls?.map(tc => ({
-        id: tc.id,
-        functionName: tc.name,
-        functionArguments: tc.arguments,
-      })),
-    }));
+    const piMessages = messages.map(m => this.convertMessage(m));
 
     // Convert minions tools to pi-ai format
     const piTools = tools.map(t => ({
-      type: 'function' as const,
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      },
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
     }));
 
-    const stream = await this.pi.chat.completions.create({
+    const context: Context = {
       messages: piMessages,
       tools: piTools.length > 0 ? piTools : undefined,
-      stream: true,
+    };
+
+    const eventStream = streamSimple(this.model, context, {
+      apiKey: this.apiKey,
     });
 
-    for await (const chunk of stream) {
-      if (chunk.delta.content) {
-        yield { type: 'text_delta', content: chunk.delta.content };
-      }
-      if (chunk.delta.toolCalls) {
-        for (const tc of chunk.delta.toolCalls) {
-          if (tc.function?.name && tc.function?.arguments) {
-            yield {
-              type: 'tool_call',
-              id: tc.id || `call-${Date.now()}`,
-              name: tc.function.name,
-              arguments: tc.function.arguments,
-            };
-          }
-        }
-      }
-      if (chunk.finishReason === 'stop') {
-        yield { type: 'done', usage: chunk.usage };
+    for await (const event of eventStream) {
+      switch (event.type) {
+        case 'text_delta':
+          yield { type: 'text_delta', content: event.delta };
+          break;
+        case 'toolcall_end':
+          yield {
+            type: 'tool_call',
+            id: event.toolCall.id,
+            name: event.toolCall.name,
+            arguments: JSON.stringify(event.toolCall.arguments), // pi-ai returns object, minions expects string
+          };
+          break;
+        case 'done':
+          yield { type: 'done', usage: event.message.usage };
+          break;
+        case 'error':
+          yield { type: 'error', error: event.error.errorMessage || 'LLM error' };
+          break;
       }
     }
+  }
+
+  private convertMessage(m: MinionsMessage): any {
+    if (m.role === 'user') {
+      return { role: 'user', content: m.content, timestamp: Date.now() };
+    }
+    if (m.role === 'assistant') {
+      const content: any[] = [];
+      if (m.content) content.push({ type: 'text', text: m.content });
+      if (m.tool_calls) {
+        for (const tc of m.tool_calls) {
+          content.push({
+            type: 'toolCall',
+            id: tc.id,
+            name: tc.name,
+            arguments: JSON.parse(tc.arguments),
+          });
+        }
+      }
+      return {
+        role: 'assistant', content,
+        api: this.model.api, provider: this.model.provider, model: this.model.id,
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: 'stop', timestamp: Date.now(),
+      };
+    }
+    if (m.role === 'tool') {
+      return {
+        role: 'toolResult', // pi-ai uses 'toolResult' not 'tool'
+        toolCallId: m.tool_call_id,
+        toolName: '',
+        content: [{ type: 'text', text: String(m.content) }],
+        isError: false,
+        timestamp: Date.now(),
+      };
+    }
+    return m;
   }
 }
 ```
@@ -189,27 +222,17 @@ if (config.provider === 'pi-ai' || config.provider === 'pi') {
 }
 ```
 
-Also update config schema in `src/config/index.ts`:
-
-```typescript
-const ConfigSchema = z.object({
-  llm: z.object({
-    provider: z.enum(['openai', 'anthropic', 'zhipu', 'ollama', 'pi-ai']).default('openai'),
-    // ...
-  }),
-  // ...
-});
-```
-
 **Step 5: Run test to verify it passes**
 
-Run: `npx vitest --run test/pi-ai-adapter.test.ts`
+```bash
+npx vitest --run test/pi-ai-adapter.test.ts
+```
 Expected: PASS
 
 **Step 6: Commit**
 
 ```bash
-git add src/llm/pi-ai-adapter.ts src/llm/factory.ts src/config/index.ts test/pi-ai-adapter.test.ts
+git add src/llm/pi-ai-adapter.ts src/llm/factory.ts test/pi-ai-adapter.test.ts
 git commit -m "feat: add PiAiAdapter for pi-mono LLM integration"
 ```
 
@@ -221,14 +244,9 @@ git commit -m "feat: add PiAiAdapter for pi-mono LLM integration"
 - Modify: `src/host-agent/task-parser.ts`
 - Modify: `test/task-parser.test.ts`
 
-**Step 1: Update existing imports**
+**Step 1: Verify TaskParser uses factory**
 
-In `src/host-agent/task-parser.ts`, ensure it uses the factory:
-
-```typescript
-// No changes needed if already using createLLMAdapter
-// Just verify it works with pi-ai provider
-```
+Ensure `src/host-agent/task-parser.ts` uses `createLLMAdapter` from factory. No changes needed if already using factory.
 
 **Step 2: Add test for pi-ai provider**
 
@@ -236,19 +254,20 @@ Update `test/task-parser.test.ts`:
 
 ```typescript
 it('works with pi-ai provider', async () => {
-  process.env.LLM_PROVIDER = 'pi-ai';
   const llm = createLLMAdapter({
     provider: 'pi-ai',
     model: 'gpt-4o',
     apiKey: process.env.LLM_API_KEY || 'test',
   });
-  // ... rest of test
+  expect(llm.provider).toBe('pi-ai');
 });
 ```
 
 **Step 3: Run tests**
 
-Run: `npx vitest --run test/task-parser.test.ts`
+```bash
+npx vitest --run test/task-parser.test.ts
+```
 Expected: PASS
 
 **Step 4: Commit**
@@ -272,7 +291,9 @@ Check that `src/host-agent/index.ts` uses `createLLMAdapter` from factory.
 
 **Step 2: Run tests**
 
-Run: `npx vitest --run test/host-agent.test.ts`
+```bash
+npx vitest --run test/host-agent.test.ts
+```
 Expected: PASS
 
 **Step 3: Commit**
@@ -291,11 +312,15 @@ git commit -m "test: verify ProjectAnalyzer works with pi-ai provider"
 
 **Step 1: Build project**
 
-Run: `npm run build`
+```bash
+npm run build
+```
 
 **Step 2: Test with pi-ai provider**
 
-Run: `LLM_PROVIDER=pi-ai LLM_MODEL=gpt-4o LLM_API_KEY=$API_KEY node dist/cli/index.js run "列出当前目录的文件"`
+```bash
+LLM_PROVIDER=pi-ai LLM_MODEL=gpt-4o LLM_API_KEY=$API_KEY node dist/cli/index.js run "列出当前目录的文件"
+```
 
 **Step 3: Verify output**
 
@@ -310,9 +335,98 @@ git commit -m "test: verify pi-ai integration works end-to-end"
 
 ---
 
-## Phase 2: pi-agent-core Integration (2-3 weeks)
+## Phase 2: pi-agent-core + Offline Mount (2-3 weeks)
 
-### Task 6: Create bootstrap.sh Script
+### Task 6: Create pi-runtime Build Script
+
+**Files:**
+- Create: `scripts/build-pi-runtime.sh`
+- Modify: `package.json`
+
+**Step 1: Write build script**
+
+Create `scripts/build-pi-runtime.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -e
+
+PI_RUNTIME_DIR="${PI_RUNTIME_DIR:-$HOME/.minion/pi-runtime}"
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[$(date +'%H:%M:%S')]${NC} $*"; }
+
+log "=== Building pi-runtime ==="
+log "Target: $PI_RUNTIME_DIR"
+
+mkdir -p "$PI_RUNTIME_DIR"
+cd "$PI_RUNTIME_DIR"
+
+# Initialize package.json if needed
+if [ ! -f package.json ]; then
+  log "Initializing package.json..."
+  npm init -y
+fi
+
+# Install pi-mono packages
+log "Installing @mariozechner/pi-ai..."
+npm install @mariozechner/pi-ai
+
+log "Installing @mariozechner/pi-agent-core..."
+npm install @mariozechner/pi-agent-core
+
+log "Installing @sinclair/typebox..."
+npm install @sinclair/typebox
+
+log "Installing @mariozechner/coding-agent (for tools)..."
+npm install @mariozechner/coding-agent
+
+log "=== pi-runtime build complete ==="
+log "Location: $PI_RUNTIME_DIR"
+```
+
+**Step 2: Make executable**
+
+```bash
+chmod +x scripts/build-pi-runtime.sh
+```
+
+**Step 3: Add npm script**
+
+Update `package.json`:
+
+```json
+{
+  "scripts": {
+    "build:pi-runtime": "bash scripts/build-pi-runtime.sh"
+  }
+}
+```
+
+**Step 4: Test build**
+
+```bash
+npm run build:pi-runtime
+```
+
+**Step 5: Verify**
+
+```bash
+ls ~/.minion/pi-runtime/node_modules/@mariozechner/
+```
+Expected: pi-ai, pi-agent-core directories exist
+
+**Step 6: Commit**
+
+```bash
+git add scripts/build-pi-runtime.sh package.json
+git commit -m "feat: add pi-runtime build script for offline mounting"
+```
+
+---
+
+### Task 7: Create bootstrap.sh Script
 
 **Files:**
 - Create: `docker/bootstrap.sh`
@@ -325,12 +439,9 @@ Create `docker/bootstrap.sh`:
 #!/usr/bin/env bash
 set -e
 
-# Configuration
 PI_RUNTIME="${PI_RUNTIME:-/opt/pi-runtime}"
-PI_VERSION="${PI_RUNTIME_VERSION:-latest}"
 MINIONS_RUN="/minion-run"
 
-# Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -340,7 +451,7 @@ log() { echo -e "${GREEN}[$(date +'%H:%M:%S')]${NC} $*"; }
 warn() { echo -e "${YELLOW}[$(date +'%H:%M:%S')]${NC} $*"; }
 err() { echo -e "${RED}[$(date +'%H:%M:%S')]${NC} $*" >&2; }
 
-# Ensure Node.js is available
+# Detect Node.js — only dependency required in container
 ensure_node() {
   if command -v node &> /dev/null; then
     log "Node.js: $(node -v)"
@@ -348,83 +459,57 @@ ensure_node() {
   fi
 
   warn "Node.js not found, attempting installation..."
-
   if command -v apt-get &> /dev/null; then
     apt-get update -qq && apt-get install -y -qq nodejs npm
   elif command -v apk &> /dev/null; then
     apk add -q nodejs npm
   elif command -v yum &> /dev/null; then
     yum install -y -q nodejs npm
-  elif command -v brew &> /dev/null; then
-    brew install node
   else
-    err "Cannot install Node.js. Please install Node.js manually."
+    err "Cannot install Node.js. Please use an image with Node.js."
     exit 1
   fi
 
   log "Node.js installed: $(node -v)"
 }
 
-# Ensure pi-runtime is installed
-ensure_pi_runtime() {
-  if [ -f "$PI_RUNTIME/node_modules/@pi-monospace/agent-core/package.json" ]; then
-    log "pi-agent-core already installed"
-    return 0
+# Verify pi-runtime mount
+verify_pi_runtime() {
+  if [ ! -d "$PI_RUNTIME/node_modules/@mariozechner/pi-ai" ]; then
+    err "pi-runtime not mounted or incomplete: $PI_RUNTIME"
+    err "Ensure Docker starts with: -v ~/.minion/pi-runtime:/opt/pi-runtime:ro"
+    exit 1
   fi
-
-  log "Installing pi-agent-core@$PI_VERSION..."
-  mkdir -p "$PI_RUNTIME"
-  cd "$PI_RUNTIME"
-
-  # Initialize package.json if needed
-  if [ ! -f package.json ]; then
-    npm init -y
-  fi
-
-  # Install pi packages
-  npm install --silent @pi-monospace/agent-core @pi-monospace/ai
-
-  log "pi-agent-core installed successfully"
+  log "pi-runtime ready (mounted from host)"
 }
 
-# Load environment from .env file
-load_env() {
+# Start sandbox agent
+start_agent() {
   if [ -f "$MINIONS_RUN/.env" ]; then
-    log "Loading environment from /minion-run/.env"
+    log "Loading LLM credentials..."
     set -a
     source "$MINIONS_RUN/.env"
     set +a
   fi
-}
 
-# Start the agent
-start_agent() {
-  load_env
-
-  local agent_bin="$PI_RUNTIME/node_modules/@pi-monospace/agent-core/dist/index.js"
-
+  local agent_bin="$PI_RUNTIME/sandbox-main.js"
   if [ ! -f "$agent_bin" ]; then
-    err "Agent binary not found: $agent_bin"
+    err "sandbox-main.js not found: $agent_bin"
+    err "Run 'npm run build' to build sandbox entry point"
     exit 1
   fi
 
-  log "Starting pi-agent-core..."
-  log "Config: $MINIONS_RUN/context.json"
-
-  exec node "$agent_bin" \
-    --config "$MINIONS_RUN/context.json" \
-    --extensions "$PI_RUNTIME/extensions"
+  log "Starting Sandbox Agent..."
+  exec node "$agent_bin" --config "$MINIONS_RUN/context.json"
 }
 
-# Main
 main() {
   log "=== Minions Sandbox Bootstrap ==="
   log "PI_RUNTIME: $PI_RUNTIME"
-  log "PI_VERSION: $PI_VERSION"
   log "MINIONS_RUN: $MINIONS_RUN"
 
   ensure_node
-  ensure_pi_runtime
+  verify_pi_runtime
   start_agent
 }
 
@@ -433,18 +518,221 @@ main "$@"
 
 **Step 2: Make executable**
 
-Run: `chmod +x docker/bootstrap.sh`
+```bash
+chmod +x docker/bootstrap.sh
+```
 
 **Step 3: Commit**
 
 ```bash
 git add docker/bootstrap.sh
-git commit -m "feat: add bootstrap.sh for automatic pi-runtime installation"
+git commit -m "feat: add bootstrap.sh for offline pi-runtime mounting"
 ```
 
 ---
 
-### Task 7: Update DockerSandbox to Mount bootstrap.sh
+### Task 8: Create Sandbox Agent Entry Point
+
+**Files:**
+- Create: `src/sandbox/main.ts`
+- Create: `src/sandbox/tools/deliver-patch.ts`
+- Modify: `tsconfig.json`
+
+**Step 1: Create deliver-patch tool**
+
+Create `src/sandbox/tools/deliver-patch.ts`:
+
+```typescript
+import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
+import { Type, type Static } from '@sinclair/typebox';
+import { execFileSync } from 'child_process';
+import { writeFileSync } from 'fs';
+
+const DeliverPatchSchema = Type.Object({
+  summary: Type.String({ description: '任务完成摘要' }),
+});
+
+export function createDeliverPatchTool(workdir: string): AgentTool<typeof DeliverPatchSchema> {
+  return {
+    name: 'deliver_patch',
+    label: 'Deliver Patch',
+    description: '将代码变更生成 patch 并交付到 /minion-run/patches/',
+    parameters: DeliverPatchSchema,
+
+    execute: async (
+      _toolCallId: string,
+      params: Static<typeof DeliverPatchSchema>,
+      _signal?: AbortSignal,
+    ): Promise<AgentToolResult<{ patchCount: number }>> => {
+      const { summary } = params;
+
+      // Check for changes
+      const status = execFileSync('git', ['status', '--porcelain'], {
+        cwd: workdir, encoding: 'utf-8',
+      });
+
+      if (!status.trim()) {
+        throw new Error('No changes detected in workspace');
+      }
+
+      // Stage + Commit
+      execFileSync('git', ['add', '.'], { cwd: workdir });
+      execFileSync('git', ['commit', '-m', `feat: ${summary}`], {
+        cwd: workdir, encoding: 'utf-8',
+      });
+
+      // Generate patch
+      const patchDir = '/minion-run/patches';
+      execFileSync('mkdir', ['-p', patchDir]);
+      const result = execFileSync('git', [
+        'format-patch', 'HEAD~1', '--output-directory', patchDir,
+      ], { cwd: workdir, encoding: 'utf-8' });
+
+      const patchCount = result.trim().split('\n').filter(Boolean).length;
+
+      // Update status
+      writeFileSync('/minion-run/status.json', JSON.stringify({
+        phase: 'done', summary, patchCount,
+      }, null, 2));
+
+      return {
+        content: [{ type: 'text', text: `Generated ${patchCount} patch(es): ${summary}` }],
+        details: { patchCount },
+      };
+    },
+  };
+}
+```
+
+**Step 2: Create sandbox main entry**
+
+Create `src/sandbox/main.ts`:
+
+```typescript
+import { Agent, type AgentTool } from '@mariozechner/pi-agent-core';
+import { getModel } from '@mariozechner/pi-ai';
+import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@mariozechner/coding-agent';
+import { createDeliverPatchTool } from './tools/deliver-patch.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+interface TaskContext {
+  task: string;
+  systemPrompt: string;
+  llm: { provider: string; model: string; apiKey: string };
+  project: any;
+}
+
+async function main() {
+  // Parse arguments
+  const configArg = process.argv.find(a => a.startsWith('--config='));
+  const configPath = configArg?.split('=')[1] || '/minion-run/context.json';
+
+  const ctx: TaskContext = JSON.parse(readFileSync(configPath, 'utf-8'));
+
+  // Get Model object using getModel()
+  const model = getModel(ctx.llm.provider as any, ctx.llm.model as any);
+
+  // Create tools using coding-agent factories
+  const tools: AgentTool<any>[] = [
+    createBashTool('/workspace'),
+    createReadTool('/workspace'),
+    createEditTool('/workspace'),
+    createWriteTool('/workspace'),
+    createDeliverPatchTool('/workspace'),
+  ];
+
+  // Create Agent
+  const agent = new Agent({
+    initialState: {
+      systemPrompt: ctx.systemPrompt,
+      model,
+      tools,
+    },
+  });
+
+  // Subscribe to events for status tracking
+  agent.subscribe((event) => {
+    if (event.type === 'turn_start' || event.type === 'tool_execution_start') {
+      updateStatus(event);
+    }
+  });
+
+  // Execute task
+  await agent.prompt(ctx.task);
+}
+
+function updateStatus(event: any): void {
+  const statusFile = '/minion-run/status.json';
+  try {
+    const existing = JSON.parse(readFileSync(statusFile, 'utf-8'));
+    writeFileSync(statusFile, JSON.stringify({
+      ...existing,
+      lastEvent: event.type,
+      timestamp: Date.now(),
+    }, null, 2));
+  } catch {
+    // Ignore errors
+  }
+}
+
+main().catch(console.error);
+```
+
+**Step 3: Update tsconfig.json**
+
+Ensure `src/sandbox` is included:
+
+```json
+{
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+**Step 4: Add build script to package.json**
+
+```json
+{
+  "scripts": {
+    "build:sandbox": "tsc -p tsconfig.json && node scripts/copy-sandbox.js"
+  }
+}
+```
+
+Create `scripts/copy-sandbox.js`:
+
+```javascript
+import { copyFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const src = join(__dirname, '../dist/sandbox/main.js');
+const dst = join(process.env.HOME, '.minion/pi-runtime/sandbox-main.js');
+
+mkdirSync(dirname(dst), { recursive: true });
+copyFileSync(src, dst);
+console.log(`Copied sandbox entry to ${dst}`);
+```
+
+**Step 5: Build and test**
+
+```bash
+npm run build
+npm run build:sandbox
+```
+
+**Step 6: Commit**
+
+```bash
+git add src/sandbox/ scripts/copy-sandbox.js tsconfig.json package.json
+git commit -m "feat: add sandbox agent entry point with pi-agent-core"
+```
+
+---
+
+### Task 9: Update DockerSandbox for Offline Mount
 
 **Files:**
 - Modify: `src/sandbox/docker.ts`
@@ -455,7 +743,7 @@ git commit -m "feat: add bootstrap.sh for automatic pi-runtime installation"
 Add to `test/sandbox.test.ts`:
 
 ```typescript
-it('mounts bootstrap.sh and sets entrypoint', () => {
+it('mounts pi-runtime and sets entrypoint', () => {
   const sandbox = new DockerSandbox();
   const config: SandboxConfig = {
     image: 'node:22-slim',
@@ -468,50 +756,53 @@ it('mounts bootstrap.sh and sets entrypoint', () => {
 
   const opts = sandbox.buildContainerOptions(config);
   expect(opts.Entrypoint).toEqual(['/minion-bootstrap.sh']);
-  expect(opts.HostConfig.Binds).toContain('/home/user/.minion/bootstrap.sh:/minion-bootstrap.sh:ro');
+  expect(opts.HostConfig.Binds).toContain(
+    '/home/user/.minion/pi-runtime:/opt/pi-runtime:ro'
+  );
 });
 ```
 
 **Step 2: Run test to verify it fails**
 
-Run: `npx vitest --run test/sandbox.test.ts`
-Expected: FAIL - entrypoint not set
+```bash
+npx vitest --run test/sandbox.test.ts
+```
+Expected: FAIL - pi-runtime mount not added
 
 **Step 3: Update DockerSandbox**
 
 Modify `src/sandbox/docker.ts`:
 
 ```typescript
-import { join, dirname } from 'path';
+import { join, homedir } from 'path';
 
 export class DockerSandbox implements Sandbox {
   private docker: Dockerode;
-  private minionHome: string;  // Add this
+  private minionHome: string;
 
   constructor(minionHome?: string) {
     this.docker = new Dockerode();
     this.minionHome = minionHome || join(homedir(), '.minion');
   }
 
-  buildContainerOptions(config: SandboxConfig & { bootstrapPath?: string }): Record<string, any> {
+  buildContainerOptions(config: SandboxConfig): Record<string, any> {
     const env: string[] = [];
     if (process.env.HTTP_PROXY) env.push(`HTTP_PROXY=${process.env.HTTP_PROXY}`);
     if (process.env.HTTPS_PROXY) env.push(`HTTPS_PROXY=${process.env.HTTPS_PROXY}`);
     if (process.env.NO_PROXY) env.push(`NO_PROXY=${process.env.NO_PROXY}`);
 
-    // Add pi-runtime environment variables
-    env.push(`PI_RUNTIME=${process.env.PI_RUNTIME || '/opt/pi-runtime'}`);
-    env.push(`PI_RUNTIME_VERSION=${process.env.PI_RUNTIME_VERSION || 'latest'}`);
+    // Add pi-runtime environment
+    env.push(`PI_RUNTIME=/opt/pi-runtime`);
 
-    const bootstrapPath = config.bootstrapPath || join(this.minionHome, 'bootstrap.sh');
+    const bootstrapPath = join(this.minionHome, 'bootstrap.sh');
+    const piRuntimePath = join(this.minionHome, 'pi-runtime');
 
     const binds: string[] = [
       `${config.repoPath}:/host-repo:ro`,
       `${config.runDir}:/minion-run`,
-      `${bootstrapPath}:/minion-bootstrap.sh:ro`,  // Mount bootstrap script
+      `${bootstrapPath}:/minion-bootstrap.sh:ro`,
+      `${piRuntimePath}:/opt/pi-runtime:ro`,  // Key: offline mount pi-runtime
     ];
-
-    // ... dist mounting code (keep existing) ...
 
     const opts: Record<string, any> = {
       Image: config.image,
@@ -522,18 +813,16 @@ export class DockerSandbox implements Sandbox {
         NanoCpus: config.cpus * 1e9,
         NetworkMode: config.network,
       },
-      Entrypoint: ['/minion-bootstrap.sh'],  // Set entrypoint
-      Cmd: [],  // Clear default command
+      Entrypoint: ['/minion-bootstrap.sh'],
+      Cmd: [],
     };
 
-    if (platform() === 'linux') {
+    if (process.platform === 'linux') {
       opts.User = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
     }
 
     return opts;
   }
-
-  // ... rest of class unchanged ...
 }
 ```
 
@@ -542,218 +831,140 @@ export class DockerSandbox implements Sandbox {
 Modify `src/host-agent/index.ts`:
 
 ```typescript
-const sandbox = new DockerSandbox(this.minionHome);  // Pass minionHome
+const sandbox = new DockerSandbox(this.minionHome);
 ```
 
 **Step 5: Run test to verify it passes**
 
-Run: `npx vitest --run test/sandbox.test.ts`
+```bash
+npx vitest --run test/sandbox.test.ts
+```
 Expected: PASS
 
 **Step 6: Commit**
 
 ```bash
 git add src/sandbox/docker.ts src/host-agent/index.ts test/sandbox.test.ts
-git commit -m "feat: mount bootstrap.sh and set container entrypoint"
+git commit -m "feat: mount pi-runtime offline and set bootstrap entrypoint"
 ```
 
 ---
 
-### Task 8: Create minions-patch Extension
+### Task 10: Create System Prompt Builder
 
 **Files:**
-- Create: `extensions/minions-patch/package.json`
-- Create: `extensions/minions-patch/src/index.ts`
-- Create: `extensions/minions-patch/tsconfig.json`
-- Create: `extensions/minions-patch/test/index.test.ts`
+- Create: `src/sandbox/prompts.ts`
 
-**Step 1: Create extension package.json**
+**Step 1: Create prompt builder**
 
-Create `extensions/minions-patch/package.json`:
-
-```json
-{
-  "name": "@minions/patch-delivery",
-  "version": "1.0.0",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "test": "vitest"
-  },
-  "dependencies": {
-    "@pi-monospace/agent-core": "^1.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^2.0.0"
-  }
-}
-```
-
-**Step 2: Create extension source**
-
-Create `extensions/minions-patch/src/index.ts`:
+Create `src/sandbox/prompts.ts`:
 
 ```typescript
-import { PiExtension } from '@pi-monospace/agent-core';
-import { execFileSync } from 'child_process';
-import { writeFileSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { buildSystemPrompt as piBuildSystemPrompt } from '@mariozechner/coding-agent/core/system-prompt';
+import type { TaskContext } from '../types/shared.js';
 
-export default class PatchDeliveryExtension extends PiExtension {
-  name = 'minions-patch';
+export function buildSandboxSystemPrompt(ctx: TaskContext): string {
+  const piBase = piBuildSystemPrompt({
+    selectedTools: ['read', 'bash', 'edit', 'write', 'grep', 'find'],
+    cwd: '/workspace',
+    contextFiles: ctx.rules.map(r => ({ path: 'coding-rules', content: r })),
+    appendSystemPrompt: buildMinionsAppend(ctx),
+  });
+  return piBase;
+}
 
-  override async onLoad() {
-    this.logger.info('Loading Patch Delivery Extension');
+function buildMinionsAppend(ctx: TaskContext): string {
+  return `
+# Minions Sandbox Environment
+You are running inside a Docker container managed by Minions.
+This container is your playground — you have full root access and complete autonomy.
 
-    this.tools.register({
-      name: 'deliver_patch',
-      description: 'Deliver code changes as patches to /minion-run/patches/',
-      parameters: {
-        type: 'object',
-        properties: {
-          summary: {
-            type: 'string',
-            description: 'Summary of the completed task',
-          },
-        },
-        required: ['summary'],
-      },
-    }, async (params) => {
-      const { summary } = params as { summary: string };
+<env>
+Source code: /workspace (cloned from host repository)
+Branch: ${ctx.branch} (base: ${ctx.baseBranch})
+Delivery: /minion-run/patches/
+Status: /minion-run/status.json
+Max iterations: ${ctx.maxIterations}
+Timeout: ${ctx.timeout} minutes
+</env>
 
-      try {
-        // Check if we're in a git repo
-        const workdir = process.cwd();
-        const statusOutput = execFileSync('git', ['status', '--porcelain'], {
-          cwd: workdir,
-          encoding: 'utf-8',
-        });
+# Full autonomy — your permissions
+You have FULL PERMISSION to:
+- Install system packages (apt-get, apk, yum, etc.)
+- Install language dependencies (npm, pip, cargo, go get, etc.)
+- Search the web for documentation and solutions (curl, wget)
+- Download reference code and resources from the internet
+- Run any system command with root privileges
+- Modify system configuration if needed
+- Create temporary files, scripts, or test fixtures
+- Run long-running processes
 
-        if (!statusOutput.trim()) {
-          return {
-            success: false,
-            error: 'No changes detected in workspace',
-          };
-        }
+The container is disposable — only the patches you deliver matter.
 
-        // Stage all changes
-        execFileSync('git', ['add', '.'], { cwd: workdir });
+# Professional objectivity
+Prioritize technical accuracy over appearing productive.
+ONLY mark a step as completed when you have FULLY accomplished it.
+If tests are failing or implementation is partial, report the blocker honestly.
 
-        // Commit
-        const commitMsg = `feat: ${summary}`;
-        execFileSync('git', ['commit', '-m', commitMsg], {
-          cwd: workdir,
-          encoding: 'utf-8',
-        });
+# Additional tool: deliver_patch
+Use deliver_patch as your FINAL action to generate git format-patch and deliver results.
+A task without patches is a FAILED task.
 
-        // Get base branch (origin/HEAD)
-        const branchOutput = execFileSync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], {
-          cwd: workdir,
-          encoding: 'utf-8',
-        }).trim();
-        const baseBranch = branchOutput.replace('refs/remotes/origin/', '');
+# Task status tracking
+Track your progress in /minion-run/status.json:
+- Update phase: "planning" | "executing" | "verifying" | "delivering" | "done" | "failed"
+- Track steps with { content, activeForm, status: "pending" | "in_progress" | "completed" }
+- Mark steps completed IMMEDIATELY after finishing. ONE step in_progress at a time.
 
-        // Generate patches
-        const patchDir = '/minion-run/patches';
-        execFileSync('git', ['format-patch', `origin/${baseBranch}`, '--output-directory', patchDir], {
-          cwd: workdir,
-          encoding: 'utf-8',
-        });
+# Tool usage policy
+- Use read (not cat) to examine files before editing
+- Use edit for precise changes. You MUST read a file before editing it.
+- Use write only for new files or complete rewrites
+- Batch independent tool calls in a single message for parallel execution
 
-        // Update status.json
-        const statusFile = '/minion-run/status.json';
-        const existingStatus = JSON.parse(readFileSync(statusFile, 'utf-8').toString() || '{}');
-        writeFileSync(statusFile, JSON.stringify({
-          ...existingStatus,
-          phase: 'done',
-          summary,
-        }, null, 2));
+# Verification (MANDATORY)
+After implementing changes, you MUST run ALL of the project's verification commands:
+build, lint, typecheck, and test. Run independent commands in parallel.
+Verify commands from README or package.json — never assume.
 
-        return {
-          success: true,
-          output: `Patch delivered: ${summary}`,
-        };
-      } catch (e: any) {
-        return {
-          success: false,
-          error: e.message,
-        };
-      }
-    });
-  }
+# Git commit protocol
+- Chain: git add . && git commit -m "descriptive message"
+- Use conventional commits format (fix:, feat:, refactor:, etc.)
+- Skip files containing secrets (.env, credentials.json)
+
+# Essential constraints
+- Your working code is in /workspace
+- Delivery output goes to /minion-run/patches/
+- You MUST commit and deliver patches before finishing
+- Do NOT hardcode secrets or API keys into source files
+- Everything else in this container is yours to use freely
+
+# Project info
+<system-reminder>
+Project analysis prepared by the Host Agent. Do NOT re-discover what is already provided.
+</system-reminder>
+${JSON.stringify(ctx.projectAnalysis, null, 2)}
+`;
 }
 ```
 
-**Step 3: Create tsconfig.json**
-
-Create `extensions/minions-patch/tsconfig.json`:
-
-```json
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src"
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
-}
-```
-
-**Step 4: Create test**
-
-Create `extensions/minions-patch/test/index.test.ts`:
-
-```typescript
-import { describe, it, expect } from 'vitest';
-import PatchDeliveryExtension from '../src/index.js';
-
-describe('PatchDeliveryExtension', () => {
-  it('has correct name', () => {
-    const ext = new PatchDeliveryExtension();
-    expect(ext.name).toBe('minions-patch');
-  });
-
-  it('registers deliver_patch tool', async () => {
-    const ext = new PatchDeliveryExtension();
-    await ext.onLoad();
-    expect(ext.tools.has('deliver_patch')).toBe(true);
-  });
-});
-```
-
-**Step 5: Build and test**
-
-Run:
-```bash
-cd extensions/minions-patch
-npm install
-npm run build
-npm test
-```
-
-**Step 6: Commit**
+**Step 2: Commit**
 
 ```bash
-git add extensions/minions-patch/
-git commit -m "feat: add minions-patch extension for pi-agent-core"
+git add src/sandbox/prompts.ts
+git commit -m "feat: add sandbox system prompt builder"
 ```
 
 ---
 
-### Task 9: Integration Test - Full Pipeline
+### Task 11: Integration Test - Full Pipeline
 
 **Files:**
-- Create: `docker/Dockerfile.pi`
-- Modify: `src/cli/index.ts` (if needed)
+- Create: `docker/Dockerfile.test`
 
-**Step 1: Create pi-base Dockerfile**
+**Step 1: Create test Dockerfile**
 
-Create `docker/Dockerfile.pi`:
+Create `docker/Dockerfile.test`:
 
 ```dockerfile
 FROM node:22-slim
@@ -763,43 +974,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl wget make gcc g++ python3 ripgrep ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create directories
-RUN mkdir -p /opt/minion /opt/pi-runtime /minion-run/patches
-
-# Copy bootstrap script
-COPY docker/bootstrap.sh /opt/minion/bootstrap.sh
-RUN chmod +x /opt/minion/bootstrap.sh
-
-# Copy minions patch extension
-COPY extensions/minions-patch/ /opt/minion/extensions/
-WORKDIR /opt/minion/extensions/minions-patch
-RUN npm install && npm run build
-
 WORKDIR /workspace
-
-ENTRYPOINT ["/opt/minion/bootstrap.sh"]
 ```
 
-**Step 2: Build Docker image**
+**Step 2: Build test image**
 
-Run:
 ```bash
-docker build -f docker/Dockerfile.pi -t minions-pi:latest .
+docker build -f docker/Dockerfile.test -t minions-test:latest .
 ```
 
 **Step 3: Test full pipeline**
 
-Run:
 ```bash
-npm run build
+# First, ensure pi-runtime is built
+npm run build:pi-runtime
+npm run build:sandbox
+
+# Run a test task
 LLM_PROVIDER=pi-ai LLM_MODEL=gpt-4o LLM_API_KEY=$API_KEY \
-  node dist/cli/index.js run "在当前目录创建一个 README.md 文件，包含项目标题和描述" \
-  --image minions-pi:latest
+  node dist/cli/index.js run "创建一个 README.md 文件，包含项目标题和描述" \
+  --image minions-test:latest
 ```
 
 **Step 4: Verify patch creation**
 
-Run:
 ```bash
 ls ~/.minion/runs/*/patches/
 ```
@@ -808,370 +1006,127 @@ Expected: At least one .patch file exists
 **Step 5: Commit**
 
 ```bash
-git add docker/Dockerfile.pi
-git commit -m "feat: add pi-based Dockerfile for testing"
+git add docker/Dockerfile.test
+git commit -m "feat: add test Dockerfile for pi-mono integration"
 ```
 
 ---
 
-## Phase 3: Configuration System Enhancement (1 week)
+## Phase 3: Configuration System (1 week)
 
-### Task 10: Create ConfigManager
+### Task 12: Add pi-mono Dependencies for Config
 
 **Files:**
-- Create: `src/host-agent/config-manager.ts`
-- Create: `test/config-manager.test.ts`
+- Modify: `package.json`
 
-**Step 1: Write the failing test**
+**Step 1: Add coding-agent dependency**
 
-Create `test/config-manager.test.ts`:
-
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest';
-import { ConfigManager } from '../src/host-agent/config-manager.js';
-import { mkdtempSync, rmSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
-
-describe('ConfigManager', () => {
-  let tempDir: string;
-  let manager: ConfigManager;
-
-  beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'minion-config-'));
-    manager = new ConfigManager(join(tempDir, 'config.yaml'));
-  });
-
-  it('loads default config when file does not exist', () => {
-    const config = manager.load();
-    expect(config.llm.provider).toBeDefined();
-  });
-
-  it('saves and loads config', () => {
-    const config = {
-      llm: { provider: 'zhipu', model: 'glm-5', apiKey: 'test' },
-      sandbox: { memory: '8g', cpus: 4, network: 'bridge' },
-      agent: { maxIterations: 100, timeout: 60 },
-    };
-    manager.save(config);
-    const loaded = manager.load();
-    expect(loaded.llm.provider).toBe('zhipu');
-  });
-});
+```bash
+npm install @mariozechner/coding-agent --save
 ```
 
-**Step 2: Run test to verify it fails**
+**Step 2: Commit**
 
-Run: `npx vitest --run test/config-manager.test.ts`
-Expected: FAIL - module not found
+```bash
+git add package.json package-lock.json
+git commit -m "deps: add @mariozechner/coding-agent for config system"
+```
 
-**Step 3: Implement ConfigManager**
+---
 
-Create `src/host-agent/config-manager.ts`:
+### Task 13: Create MinionsConfig Wrapper
+
+**Files:**
+- Create: `src/host-agent/config.ts`
+
+**Step 1: Create config wrapper**
+
+Create `src/host-agent/config.ts`:
 
 ```typescript
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { dirname, join } from 'path';
-import { loadConfig as loadEnvConfig } from '../config/index.js';
+import { SettingsManager } from '@mariozechner/coding-agent/core/settings-manager';
+import { ModelRegistry } from '@mariozechner/coding-agent/core/model-registry';
+import { AuthStorage } from '@mariozechner/coding-agent/core/auth-storage';
+import { selectConfig } from '@mariozechner/coding-agent/cli/config-selector';
+import type { Model, Api } from '@mariozechner/pi-ai';
 
-export interface MinionsConfig {
-  llm: {
-    provider: string;
-    model: string;
-    apiKey: string;
-    baseUrl?: string;
-  };
+export interface MinionsExtraConfig {
   sandbox: {
     memory: string;
     cpus: number;
     network: string;
     image?: string;
   };
-  agent: {
-    maxIterations: number;
-    timeout: number;
-  };
   pi: {
-    runtimeVersion?: string;
     runtimeDir?: string;
   };
 }
 
-export class ConfigManager {
-  private configPath: string;
+export class MinionsConfig {
+  readonly settings: SettingsManager;
+  readonly modelRegistry: ModelRegistry;
+  private extra: MinionsExtraConfig;
 
-  constructor(configPath: string) {
-    this.configPath = configPath;
+  constructor(cwd: string, agentDir: string) {
+    const authStorage = new AuthStorage(agentDir);
+    this.settings = SettingsManager.create(cwd, agentDir);
+    this.modelRegistry = new ModelRegistry(authStorage);
+    this.extra = this.loadExtraConfig();
   }
 
-  load(): MinionsConfig {
-    // Load from environment variables first (existing behavior)
-    const envConfig = loadEnvConfig();
-
-    // TODO: Load from YAML file and merge
-    // For now, just return env config
-    return {
-      llm: {
-        provider: envConfig.llm.provider,
-        model: envConfig.llm.model,
-        apiKey: envConfig.llm.apiKey,
-        baseUrl: envConfig.llm.baseUrl,
-      },
-      sandbox: {
-        memory: envConfig.sandbox.memory,
-        cpus: envConfig.sandbox.cpus,
-        network: envConfig.sandbox.network,
-      },
-      agent: {
-        maxIterations: envConfig.agent.maxIterations,
-        timeout: envConfig.agent.timeout,
-      },
-      pi: {
-        runtimeVersion: process.env.PI_RUNTIME_VERSION,
-        runtimeDir: process.env.PI_RUNTIME,
-      },
-    };
-  }
-
-  save(config: MinionsConfig): void {
-    // TODO: Implement YAML save
-    // For now, just ensure directory exists
-    const dir = dirname(this.configPath);
-    if (!existsSync(dir)) {
-      require('fs').mkdirSync(dir, { recursive: true });
+  async getModel(): Promise<Model<Api>> {
+    const provider = this.settings.getDefaultProvider();
+    const modelId = this.settings.getDefaultModel();
+    if (provider && modelId) {
+      const model = this.modelRegistry.find(provider, modelId);
+      if (model) return model;
     }
-    writeFileSync(this.configPath, JSON.stringify(config, null, 2));
+    const available = this.modelRegistry.getAvailable();
+    if (available.length === 0) {
+      throw new Error('No models available. Run: minion setup');
+    }
+    return available[0];
   }
 
-  async parseFromNL(input: string, llm: any): Promise<Partial<MinionsConfig>> {
-    // TODO: Use pi-ai to parse natural language config
-    // For now, return empty
-    return {};
+  async getApiKey(model: Model<Api>): Promise<string | undefined> {
+    return this.modelRegistry.getApiKey(model);
   }
-}
-```
 
-**Step 4: Run test to verify it passes**
-
-Run: `npx vitest --run test/config-manager.test.ts`
-Expected: PASS
-
-**Step 5: Commit**
-
-```bash
-git add src/host-agent/config-manager.ts test/config-manager.test.ts
-git commit -m "feat: add ConfigManager for unified configuration management"
-```
-
----
-
-### Task 11: Create SetupWizard
-
-**Files:**
-- Create: `src/host-agent/setup-wizard.ts`
-- Create: `test/setup-wizard.test.ts`
-
-**Step 1: Research pi-mono/openclaw for reference**
-
-Check if pi-mono has setup wizard code:
-```bash
-# This would be done manually to inspect pi-mono source
-# Look for files like: setup-wizard.ts, first-run.ts, onboarding.ts
-```
-
-**Step 2: Write SetupWizard**
-
-Create `src/host-agent/setup-wizard.ts`:
-
-```typescript
-import { createInterface } from 'readline';
-import { createLLMAdapter } from '../llm/factory.js';
-import type { LLMAdapter } from '../llm/types.js';
-
-export interface ProviderInfo {
-  id: string;
-  name: string;
-  models: string[];
-  defaultModel: string;
-  requiresApiKey: boolean;
-  baseUrlTemplate?: string;
-}
-
-const PROVIDERS: Record<string, ProviderInfo> = {
-  openai: {
-    id: 'openai',
-    name: 'OpenAI',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    defaultModel: 'gpt-4o',
-    requiresApiKey: true,
-  },
-  anthropic: {
-    id: 'anthropic',
-    name: 'Anthropic',
-    models: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022'],
-    defaultModel: 'claude-sonnet-4-20250514',
-    requiresApiKey: true,
-  },
-  zhipu: {
-    id: 'zhipu',
-    name: '智谱 AI (Zhipu AI)',
-    models: ['glm-5', 'glm-4-air', 'glm-4-flash'],
-    defaultModel: 'glm-5',
-    requiresApiKey: true,
-    baseUrlTemplate: 'https://open.bigmodel.cn/api/paas/v4',
-  },
-  ollama: {
-    id: 'ollama',
-    name: 'Ollama (本地模型)',
-    models: ['llama3', 'mistral', 'codellama'],
-    defaultModel: 'llama3',
-    requiresApiKey: false,
-    baseUrlTemplate: 'http://localhost:11434/v1',
-  },
-};
-
-export class SetupWizard {
-  private rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  private question(query: string): Promise<string> {
-    return new Promise(resolve => {
-      this.rl.question(query, resolve);
+  async openConfigUI(cwd: string, agentDir: string): Promise<void> {
+    await selectConfig({
+      settingsManager: this.settings,
+      cwd,
+      agentDir,
+      resolvedPaths: { extensions: [], skills: [], prompts: [], themes: [] },
     });
   }
 
-  private close(): void {
-    this.rl.close();
-  }
-
-  async run(): Promise<{ provider: string; model: string; apiKey: string }> {
-    console.log('\n🔧 欢迎使用 Minions！');
-    console.log('检测到这是首次运行，需要配置 LLM 提供商。\n');
-
-    // Step 1: Select provider
-    const providerId = await this.selectProvider();
-    const provider = PROVIDERS[providerId];
-
-    // Step 2: Enter API key
-    let apiKey = '';
-    if (provider.requiresApiKey) {
-      apiKey = await this.inputApiKey();
-    }
-
-    // Step 3: Select model
-    const model = await this.selectModel(provider);
-
-    // Step 4: Test connection
-    const success = await this.testConnection(providerId, model, apiKey);
-    if (!success) {
-      console.log('\n⚠️  连接失败，请检查配置后重试。');
-      throw new Error('Connection test failed');
-    }
-
-    console.log('\n✓ 配置完成！');
-
-    return { provider: providerId, model, apiKey };
-  }
-
-  private async selectProvider(): Promise<string> {
-    console.log('请选择 LLM 提供商：\n');
-    const entries = Object.entries(PROVIDERS);
-
-    for (let i = 0; i < entries.length; i++) {
-      const [id, info] = entries[i];
-      console.log(`  ${i + 1}) ${info.name}`);
-    }
-
-    const choice = await this.question('\n选择 [1-4]: ');
-    const index = parseInt(choice) - 1;
-
-    if (index < 0 || index >= entries.length) {
-      return this.selectProvider();
-    }
-
-    return entries[index][0];
-  }
-
-  private async inputApiKey(): Promise<string> {
-    // Simple implementation (not hiding input for simplicity)
-    // TODO: Use proper password hiding
-    return await this.question('输入 API Key: ');
-  }
-
-  private async selectModel(provider: ProviderInfo): Promise<string> {
-    console.log(`\n选择模型 [${provider.defaultModel}]:\n`);
-    for (let i = 0; i < provider.models.length; i++) {
-      console.log(`  ${i + 1}) ${provider.models[i]}`);
-    }
-
-    const choice = await this.question(`\n选择 [1-${provider.models.length}]: `);
-
-    if (!choice.trim()) {
-      return provider.defaultModel;
-    }
-
-    const index = parseInt(choice) - 1;
-    if (index >= 0 && index < provider.models.length) {
-      return provider.models[index];
-    }
-
-    return provider.defaultModel;
-  }
-
-  private async testConnection(provider: string, model: string, apiKey: string): Promise<boolean> {
-    console.log('\n正在测试连接...');
-
-    try {
-      const llm = createLLMAdapter({ provider, model, apiKey });
-      // Simple test call
-      for await (const event of llm.chat([{ role: 'user', content: 'test' }], [])) {
-        if (event.type === 'done') return true;
-        if (event.type === 'error') return false;
-      }
-      return true;
-    } catch {
-      return false;
-    }
+  private loadExtraConfig(): MinionsExtraConfig {
+    // TODO: Load from ~/.minion/config.json
+    return {
+      sandbox: {
+        memory: '4g',
+        cpus: 2,
+        network: 'bridge',
+      },
+      pi: {
+        runtimeDir: join(homedir(), '.minion', 'pi-runtime'),
+      },
+    };
   }
 }
 ```
 
-**Step 3: Write test**
-
-Create `test/setup-wizard.test.ts`:
-
-```typescript
-import { describe, it, expect } from 'vitest';
-import { SetupWizard, PROVIDERS } from '../src/host-agent/setup-wizard.js';
-
-describe('SetupWizard', () => {
-  it('has provider definitions', () => {
-    expect(PROVIDERS.openai).toBeDefined();
-    expect(PROVIDERS.zhipu).toBeDefined();
-    expect(PROVIDERS.ollama).toBeDefined();
-  });
-
-  // Note: Full interactive tests would require mocking stdin/stdout
-});
-```
-
-**Step 4: Run tests**
-
-Run: `npx vitest --run test/setup-wizard.test.ts`
-Expected: PASS
-
-**Step 5: Commit**
+**Step 2: Commit**
 
 ```bash
-git add src/host-agent/setup-wizard.ts test/setup-wizard.test.ts
-git commit -m "feat: add SetupWizard for first-time LLM configuration"
+git add src/host-agent/config.ts
+git commit -m "feat: add MinionsConfig wrapper for pi-mono settings"
 ```
 
 ---
 
-### Task 12: Add CLI Commands for Config
+### Task 14: Update CLI with setup Command
 
 **Files:**
 - Modify: `src/cli/index.ts`
@@ -1183,141 +1138,223 @@ Add to `src/cli/index.ts`:
 ```typescript
 program
   .command('setup')
-  .description('Run first-time setup wizard')
+  .description('打开配置界面（模型选择、API Key 设置）')
   .action(async () => {
-    const { SetupWizard } = await import('../host-agent/setup-wizard.js');
-    const { ConfigManager } = await import('../host-agent/config-manager.js');
+    const { MinionsConfig } = await import('../host-agent/config.js');
     const { homedir } = await import('os');
     const { join } = await import('path');
 
-    const minionHome = join(homedir(), '.minion');
-    const manager = new ConfigManager(join(minionHome, 'config.yaml'));
-    const wizard = new SetupWizard();
+    const agentDir = join(homedir(), '.minion');
+    const config = new MinionsConfig(process.cwd(), agentDir);
 
-    try {
-      const config = await wizard.run();
-      // Save to config file
-      // TODO: Implement YAML save
-      console.log('\n配置已保存到 ~/.minion/config.yaml');
-    } catch (e) {
-      console.error(`\n错误: ${e.message}`);
-      process.exit(1);
-    }
+    await config.openConfigUI(process.cwd(), agentDir);
+    console.log('✓ 配置完成');
   });
 
 program
   .command('config')
-  .description('View or update configuration')
-  .option('--set <key=value>', 'Set a configuration value')
-  .action(async (opts) => {
-    const { ConfigManager } = await import('../host-agent/config-manager.js');
+  .description('查看当前配置')
+  .action(async () => {
+    const { MinionsConfig } = await import('../host-agent/config.js');
     const { homedir } = await import('os');
     const { join } = await import('path');
 
-    const manager = new ConfigManager(join(homedir(), '.minion', 'config.yaml'));
-    const config = manager.load();
+    const agentDir = join(homedir(), '.minion');
+    const config = new MinionsConfig(process.cwd(), agentDir);
 
-    if (opts.set) {
-      // Parse key=value and update
-      console.log(`Setting ${opts.set}`);
-      // TODO: Implement
-    } else {
-      console.log(JSON.stringify(config, null, 2));
-    }
+    const model = await config.getModel();
+    console.log({
+      provider: model.provider,
+      model: model.id,
+      sandbox: config.settings.get('sandbox'),
+    });
   });
 ```
 
 **Step 2: Test commands**
 
-Run: `node dist/cli/index.js setup --help`
-Expected: Usage shown
+```bash
+npm run build
+node dist/cli/index.js setup --help
+node dist/cli/index.js config
+```
 
 **Step 3: Commit**
 
 ```bash
 git add src/cli/index.ts
-git commit -m "feat: add 'minion setup' and 'minion config' commands"
+git commit -m "feat: add setup and config commands using pi-mono TUI"
+```
+
+---
+
+### Task 15: Add models.json Support
+
+**Files:**
+- Create: `docs/CONFIGURATION.md`
+
+**Step 1: Document models.json**
+
+Create `docs/CONFIGURATION.md`:
+
+```markdown
+# Configuration
+
+## Models
+
+Minions uses pi-mono's configuration system. Models are configured in `~/.pi/models.json`:
+
+\`\`\`json
+{
+  "providers": {
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "$DEEPSEEK_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-chat",
+          "name": "DeepSeek V3",
+          "reasoning": false,
+          "input": ["text"],
+          "cost": { "input": 0.27, "output": 1.1 },
+          "contextWindow": 64000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}
+\`\`\`
+
+## Built-in Providers
+
+- OpenAI (openai)
+- Anthropic (anthropic)
+- Google (google)
+- Zhipu/ZAI (zai)
+
+Run `minion setup` to configure.
+```
+
+**Step 2: Commit**
+
+```bash
+git add docs/CONFIGURATION.md
+git commit -m "docs: add configuration guide for models.json"
 ```
 
 ---
 
 ## Final Tasks
 
-### Task 13: Update README and Documentation
+### Task 16: Update README
 
 **Files:**
 - Modify: `README.md`
-- Create: `docs/INSTALLATION.md`
-- Create: `docs/CONFIGURATION.md`
 
 **Step 1: Update README**
 
-Add pi-mono integration section to README.md:
-
 ```markdown
-## Architecture
-
-Minions V3 integrates with [pi-mono](https://github.com/badlogic/pi-mono) for LLM and Agent runtime:
-
-- **pi-ai**: Unified LLM interface supporting OpenAI, Anthropic, Zhipu, and more
-- **pi-agent-core**: Agent runtime with extension system
-- **minions-patch**: Custom extension for git format-patch delivery
-
 ## Quick Start
 
 \`\`\`bash
-# First time setup
+# Install dependencies
 npm install
+
+# Build pi-runtime (offline, mounted to containers)
+npm run build:pi-runtime
+
+# Build minions
 npm run build
-npm run docker:build
+
+# Configure LLM (opens pi-mono TUI)
 minion setup
 
 # Run a task
-minion run "Fix the login bug"
+minion run "Fix the login bug in src/auth/login.ts"
 \`\`\`
+
+## Architecture
+
+Minions V3 integrates [pi-mono](https://github.com/badlogic/pi-mono):
+
+- **pi-ai**: Unified LLM interface
+- **pi-agent-core**: Agent runtime
+- **coding-agent**: File tools (read, edit, bash, write)
+- **minions-patch**: Git format-patch delivery
+
+## Offline Mode
+
+pi-runtime is pre-built on the host and mounted to containers. No npm install needed inside containers.
 ```
 
-**Step 2: Create installation docs**
-
-Create `docs/INSTALLATION.md` with detailed setup instructions.
-
-**Step 3: Create configuration docs**
-
-Create `docs/CONFIGURATION.md` with all configuration options.
-
-**Step 4: Commit**
+**Step 2: Commit**
 
 ```bash
-git add README.md docs/INSTALLATION.md docs/CONFIGURATION.md
-git commit -m "docs: update README and add installation/configuration guides"
+git add README.md
+git commit -m "docs: update README for V3 pi-mono integration"
 ```
 
 ---
 
-### Task 14: Final Integration Test
+### Task 17: Final Integration Test
 
 **Files:**
 - None (manual testing)
 
 **Step 1: Complete end-to-end test**
 
-Run full workflow:
 ```bash
+# Clean slate
+rm -rf ~/.minion
+npm install
+npm run build:pi-runtime
+npm run build
+
+# Setup
 minion setup
-minion run "创建一个简单的 TypeScript 项目，包含 package.json 和 tsconfig.json"
+
+# Run task
+minion run "创建一个 TypeScript 函数，计算斐波那契数列"
 ```
 
 **Step 2: Verify all components**
 
-- [ ] Setup wizard completes successfully
+- [ ] Setup wizard (pi-mono TUI) opens
+- [ ] pi-runtime builds successfully
 - [ ] Docker container starts with bootstrap
-- [ ] pi-agent-core installs automatically
+- [ ] pi-runtime mounts at /opt/pi-runtime
+- [ ] Agent uses pi-ai for LLM calls
 - [ ] Task completes with patches
-- [ ] Patches apply correctly to local repo
+- [ ] Patches apply correctly
 
 **Step 3: Create release notes**
 
-Create `RELEASE_NOTES.md` documenting V3 changes.
+Create `RELEASE_NOTES.md`:
+
+```markdown
+# Minions V3 Release Notes
+
+## pi-mono Integration
+
+- LLM layer migrated to @mariozechner/pi-ai
+- Agent runtime migrated to @mariozechner/pi-agent-core
+- Tools from @mariozechner/coding-agent
+- Offline pi-runtime mounting (no container npm install)
+- Configuration via pi-mono TUI (`minion setup`)
+
+## Breaking Changes
+
+- Config format changed. Run `minion setup` to reconfigure.
+- Custom models via ~/.pi/models.json (pi-mono format)
+
+## Migration
+
+V2 users should:
+1. Run `npm run build:pi-runtime`
+2. Run `minion setup` to reconfigure LLM
+```
 
 **Step 4: Final commit**
 
@@ -1333,7 +1370,12 @@ git commit -m "docs: add V3 release notes"
 This implementation plan migrates Minions to pi-mono framework in three phases:
 
 1. **Phase 1**: pi-ai integration for all LLM calls
-2. **Phase 2**: pi-agent-core integration with bootstrap mechanism
-3. **Phase 3**: Enhanced configuration system with natural language support
+2. **Phase 2**: pi-agent-core + offline pi-runtime mounting
+3. **Phase 3**: Configuration system using pi-mono components
 
-Each phase can be verified independently before proceeding to the next.
+Key corrections from original plan:
+- Real package names: `@mariozechner/*` not `@pi-monospace/*`
+- Real API: `getModel()` not `new PiAI()`
+- Offline mounting strategy (not container npm install)
+- Reuse pi-mono SettingsManager (not custom ConfigManager)
+- AgentTool interface (not PiExtension base class)
