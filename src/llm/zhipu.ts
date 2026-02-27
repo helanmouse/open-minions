@@ -7,15 +7,16 @@ function logLLM(direction: 'REQ' | 'RES', data: unknown): void {
 }
 
 /**
- * Anthropic Claude API Adapter
+ * Zhipu AI (智谱 AI) Adapter
  *
- * Standard Anthropic API implementation:
- * - Base URL: https://api.anthropic.com/v1
- * - Supports role='tool' for tool results
- * - Uses standard Anthropic message format
+ * Zhipu provides an Anthropic-compatible API with some differences:
+ * - Base URL: https://open.bigmodel.cn/api/anthropic
+ * - Does NOT support role='tool' messages
+ * - Tool results must be sent as user messages with special formatting
+ * - Tool calls use content array with tool_use blocks
  */
-export class AnthropicAdapter implements LLMAdapter {
-  provider = 'anthropic';
+export class ZhipuAdapter implements LLMAdapter {
+  provider = 'zhipu';
   private config: LLMConfig;
 
   constructor(config: LLMConfig) {
@@ -23,34 +24,43 @@ export class AnthropicAdapter implements LLMAdapter {
   }
 
   async *chat(messages: Message[], tools: ToolDef[]): AsyncIterable<LLMEvent> {
-    const baseUrl = this.config.baseUrl || 'https://api.anthropic.com/v1';
+    // Zhipu API base URL
+    const baseUrl = this.config.baseUrl || 'https://open.bigmodel.cn/api/anthropic';
+    // Ensure baseUrl ends with /v1
+    const apiBaseUrl = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+
     const systemMsg = messages.find(m => m.role === 'system');
     const nonSystemMsgs = messages.filter(m => m.role !== 'system');
 
-    // Convert messages to Anthropic API format
+    // Convert messages to Zhipu format
+    // Zhipu doesn't support role='tool', so we convert tool results to user messages
     const apiMessages: any[] = [];
 
     for (const msg of nonSystemMsgs) {
       if (msg.role === 'tool') {
-        // Standard Anthropic tool result format
+        // Convert tool result to user message format
         apiMessages.push({
           role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: msg.tool_call_id,
-              content: msg.content,
-            },
-          ],
+          content: `[Tool Result for ${msg.tool_call_id}]:\n${msg.content}`,
         });
       } else if (msg.role === 'assistant') {
-        const assistantMsg: any = { role: 'assistant', content: msg.content || '' };
+        const assistantMsg: any = { role: 'assistant', content: msg.content || [] };
         if (msg.tool_calls && msg.tool_calls.length > 0) {
-          assistantMsg.content = msg.content || [];
-          assistantMsg.tool_calls = msg.tool_calls;
+          // Zhipu format: tool_use blocks in content array
+          const blocks: any[] = msg.content ? [{ type: 'text', text: msg.content }] : [];
+          for (const tc of msg.tool_calls) {
+            blocks.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: JSON.parse(tc.arguments),
+            });
+          }
+          assistantMsg.content = blocks;
         }
         apiMessages.push(assistantMsg);
       } else {
+        // user messages
         apiMessages.push(msg);
       }
     }
@@ -76,11 +86,11 @@ export class AnthropicAdapter implements LLMAdapter {
       tools: tools.length,
     }));
 
-    const res = await fetch(`${baseUrl}/messages`, {
+    const res = await fetch(`${apiBaseUrl}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': this.config.apiKey,
+        'Authorization': `Bearer ${this.config.apiKey}`,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
@@ -89,7 +99,7 @@ export class AnthropicAdapter implements LLMAdapter {
     if (!res.ok) {
       const errorText = await res.text();
       logLLM('RES', `Error ${res.status}: ${errorText}`);
-      yield { type: 'error', error: `Anthropic API error: ${res.status} ${errorText}` };
+      yield { type: 'error', error: `Zhipu API error: ${res.status} ${errorText}` };
       return;
     }
 

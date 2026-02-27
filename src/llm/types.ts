@@ -6,7 +6,7 @@ export interface LLMAdapter {
 }
 
 export interface LLMConfig {
-  provider: 'openai' | 'anthropic' | 'ollama';
+  provider: 'openai' | 'anthropic' | 'zhipu' | 'ollama';
   model: string;
   apiKey: string;
   baseUrl?: string;

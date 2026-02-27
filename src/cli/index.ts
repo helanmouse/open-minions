@@ -1,7 +1,13 @@
+#!/usr/bin/env node
+import { config } from 'dotenv';
 import { Command } from 'commander';
 import { join } from 'path';
 import { homedir } from 'os';
 import { loadConfig } from '../config/index.js';
+
+// Load .env file from current directory or home directory
+config({ path: ['.env', join(homedir(), '.minion', '.env')] });
+config();
 import { createLLMAdapter } from '../llm/factory.js';
 import { TaskStore } from '../task/store.js';
 import { DockerSandbox } from '../sandbox/docker.js';

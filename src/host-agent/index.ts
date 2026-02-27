@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { mkdirSync, writeFileSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import type { LLMAdapter } from '../llm/types.js';
 import type { Sandbox } from '../sandbox/types.js';
 import type { TaskContext, TaskRequest, SandboxStatus } from '../types/shared.js';
@@ -48,9 +48,13 @@ export class HostAgent {
     const parsed = await parseTaskDescription(this.llm, rawInput);
 
     // Step 2: Determine repo
-    const repoPath = opts.repo || parsed.repoUrl || process.cwd();
+    let repoPath = opts.repo || parsed.repoUrl || process.cwd();
     const repoType = repoPath.startsWith('http') || repoPath.startsWith('git@')
       ? 'remote' as const : 'local' as const;
+    // Resolve local repo path to absolute
+    if (repoType === 'local') {
+      repoPath = resolve(repoPath);
+    }
 
     // Step 3: Analyze project (LLM-powered, read-only scan)
     const analysis = await this.analyzeProject(repoPath);

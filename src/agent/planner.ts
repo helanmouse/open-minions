@@ -6,7 +6,26 @@ export function buildSystemPrompt(ctx: TaskContext): string {
   sections.push(`You are an autonomous coding agent running inside a Docker container.
 Your task: ${ctx.description}
 
-You have full access to bash, file read/write/edit, code search, and git.`);
+## IMPORTANT: How to Use Tools
+
+You MUST use tool calls to interact with the system. DO NOT output tool names as text.
+
+Available tools:
+- bash: Execute shell commands
+- read: Read file contents
+- write: Write content to a file
+- edit: Edit a file by replacing text
+- list_files: List files in a directory
+- search_code: Search for code patterns
+- git: Execute git commands
+
+To use a tool, you must use the tool_use block format:
+\`\`\`
+{"type": "tool_use", "id": "unique_id", "name": "tool_name", "input": {...}}
+\`\`\`
+
+DO NOT output tool names as plain text like "list_files" or '{"path": "src/tools"}'.
+Instead, use proper tool_use blocks that the system will execute.`);
 
   sections.push(`## Project Info
 ${JSON.stringify(ctx.projectAnalysis, null, 2)}`);

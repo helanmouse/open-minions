@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const ConfigSchema = z.object({
   llm: z.object({
-    provider: z.enum(['openai', 'anthropic', 'ollama']).default('openai'),
+    provider: z.enum(['openai', 'anthropic', 'zhipu', 'ollama']).default('openai'),
     model: z.string().default('gpt-4o'),
     apiKey: z.string().default(''),
     baseUrl: z.string().optional(),

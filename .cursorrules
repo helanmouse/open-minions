@@ -1,0 +1,133 @@
+# Open Minions - AI Coding Rules
+
+You are working on **Open Minions**, an autonomous AI coding agent system with Docker sandbox isolation.
+
+## Project Architecture
+
+### Dual-Layer Agent System
+- **Host Agent** (`src/host-agent/`) - Runs on host machine, restricted permissions
+  - Parses natural language tasks
+  - Analyzes target projects
+  - Launches Docker containers
+  - Applies patches via `git am`
+  - Pushes to remote
+
+- **Sandbox Agent** (`src/agent/`) - Runs inside Docker container, full autonomy
+  - Clones repo from host-repo mount
+  - Plans and executes code changes
+  - Runs tests and linters
+  - Generates patches via `git format-patch`
+
+### Directory Structure
+```
+src/
+├── agent/          # Sandbox Agent (runs in container)
+│   ├── main.ts     # Container entry point, orchestrates flow
+│   ├── planner.ts  # System prompt builder
+│   └── watchdog.ts # Cost/iteration limits
+├── host-agent/     # Host Agent (runs on user machine)
+│   ├── index.ts    # Main orchestration
+│   ├── repo-preparer.ts   # Git operations
+│   ├── patch-applier.ts   # git am
+│   └── task-parser.ts     # Natural language parsing
+├── worker/         # Agent loop execution
+│   └── agent-loop.ts      # Tool-based agent iteration
+├── tools/          # Tool definitions
+│   ├── registry.ts # Tool registration
+│   ├── types.ts    # AgentTool interface
+│   ├── bash.ts     # Shell execution
+│   ├── file-ops.ts # read/write/edit/list
+│   ├── search.ts   # Code search
+│   └── git.ts      # Git operations
+├── llm/            # LLM adapters
+│   ├── factory.ts  # Adapter factory
+│   ├── types.ts    # LLMAdapter interface
+│   ├── openai.ts   # OpenAI impl
+│   ├── anthropic.ts# Anthropic impl
+│   └── ollama.ts   # Ollama impl
+├── sandbox/        # Docker management
+│   └── docker.ts   # Container lifecycle
+├── config/         # Configuration loading
+│   └── index.ts    # Zod schema + env parsing
+├── task/           # Task persistence
+│   └── store.ts    # ~/.minion/tasks.json
+├── types/          # Shared types
+│   ├── host.ts     # Host-only types
+│   ├── sandbox.ts  # Sandbox-only types
+│   └── shared.ts   # Shared between host/sandbox
+├── cli/            # CLI interface
+│   └── index.ts    # Commander.js entry point
+└── index.ts        # Package exports
+```
+
+## Coding Standards
+
+### TypeScript
+- Use ES modules (`"type": "module"`)
+- Use `.js` extensions in imports (Node ESM convention)
+- Enable strict type checking
+- Use Zod for runtime validation
+- Prefer `interface` for public APIs, `type` for unions/intersections
+
+### Error Handling
+- Always use try-catch for async operations
+- Propagate errors with context (don't swallow silently)
+- Use custom Error classes for domain-specific errors
+
+### Tool Implementation
+Tools must implement `AgentTool` interface:
+```typescript
+interface AgentTool {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  execute(params: Record<string, any>, ctx: ToolContext): Promise<ToolResult>;
+}
+```
+
+### Agent Flow
+1. **Clone** - Clone from `/host-repo` to `/minion-run/workspace`
+2. **Plan** - Build system prompt with project context
+3. **Execute** - Run agent loop with available tools
+4. **Deliver** - Generate patches via `git format-patch origin/baseBranch`
+
+### Docker Integration
+- Host repo mounted at `/host-repo` (read-only)
+- Work directory at `/minion-run`
+- Workspace at `/minion-run/workspace` (writable clone)
+- Patches output to `/minion-run/patches/`
+- Status at `/minion-run/status.json`
+
+### Configuration
+All config via environment variables:
+- `LLM_PROVIDER` - openai|anthropic|ollama
+- `LLM_MODEL` - Model name
+- `LLM_API_KEY` - API key
+- `SANDBOX_MEMORY` - Docker memory limit
+- `AGENT_MAX_ITERATIONS` - Max agent loop iterations
+
+## Key Patterns
+
+### Tool Registry Pattern
+Register tools before agent loop:
+```typescript
+const registry = new ToolRegistry();
+[bashTool, readTool, writeTool, editTool, listFilesTool, searchCodeTool, gitTool]
+  .forEach(t => registry.register(t));
+```
+
+### Status Updates
+Update status.json for host agent monitoring:
+```typescript
+updateStatus({ phase: 'executing', progress: 'Running tests...' });
+```
+
+### Git Operations
+- Always configure git user in container
+- Use `format-patch` for delivery (not diff)
+- Use `git am` on host for applying
+
+## Testing
+- Use Vitest
+- Mock Docker/LLM calls in tests
+- Test tool execution in isolation

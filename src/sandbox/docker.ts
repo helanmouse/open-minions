@@ -27,18 +27,31 @@ export class DockerSandbox implements Sandbox {
     if (process.env.HTTPS_PROXY) env.push(`HTTPS_PROXY=${process.env.HTTPS_PROXY}`);
     if (process.env.NO_PROXY) env.push(`NO_PROXY=${process.env.NO_PROXY}`);
 
+    const binds: string[] = [
+      `${config.repoPath}:/host-repo:ro`,
+      `${config.runDir}:/minion-run`,
+    ];
+
+    // Development mode: mount dist/ directory to use latest code
+    // This allows code changes without rebuilding the image
+    const devDistPath = process.env.MINION_DIST_PATH;
+    if (devDistPath) {
+      binds.push(`${devDistPath}:/opt/minion/dist:ro`);
+      env.push('MINION_DEV_MODE=1');
+    }
+
     const opts: Record<string, any> = {
       Image: config.image,
       Env: env,
       HostConfig: {
-        Binds: [
-          `${config.repoPath}:/host-repo:ro`,
-          `${config.runDir}:/minion-run`,
-        ],
+        Binds: binds,
         Memory: parseMemory(config.memory),
         NanoCpus: config.cpus * 1e9,
         NetworkMode: config.network,
       },
+      // Always override the command to run the sandbox agent
+      Cmd: ['node', 'dist/agent/main.js'],
+      WorkingDir: '/opt/minion',
     };
 
     if (platform() === 'linux') {
@@ -48,6 +61,15 @@ export class DockerSandbox implements Sandbox {
     return opts;
   }
   async pull(image: string): Promise<void> {
+    // Check if image exists locally first
+    try {
+      await this.docker.getImage(image).inspect();
+      // Image exists locally, skip pull
+      return;
+    } catch {
+      // Image doesn't exist locally, try to pull
+    }
+
     const stream = await this.docker.pull(image);
     await new Promise<void>((resolve, reject) => {
       this.docker.modem.followProgress(stream, (err: Error | null) => {
