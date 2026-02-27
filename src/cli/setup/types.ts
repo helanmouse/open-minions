@@ -1,5 +1,4 @@
 // src/cli/setup/types.ts
-import type { Model } from '@mariozechner/pi-ai';
 
 export interface SetupConfig {
   provider: string;
