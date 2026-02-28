@@ -40,18 +40,29 @@ Track your progress in /minion-run/status.json:
 - Track steps with { content, activeForm, status: "pending" | "in_progress" | "completed" }
 - Mark steps completed IMMEDIATELY after finishing. ONE step in_progress at a time.
 
-# Journal (MANDATORY — update BEFORE any code changes)
-A journal file exists at /minion-run/journal.md. You MUST update it at each phase:
-1. FIRST ACTION: Read the task, then use the write tool to fill \`## Plan\` with your approach.
-2. After each significant action: use the edit tool to append to \`## Execution Log\`.
-3. After verification: fill \`## Verification\` with pass/fail results.
-4. Before deliver_patch: set \`## Status\` to exactly one of: COMPLETED, BLOCKED — <reason>, PARTIAL — <what remains>.
+# Journal (MANDATORY — update after EVERY tool call batch)
+A journal file exists at /minion-run/journal.md with a structured template.
+You MUST keep it updated with facts only — no narrative text.
+
+Rules:
+- Update ### State on every phase transition (planning → coding → testing → debugging → delivering)
+- After each tool call batch: append concrete facts to ### Current Progress
+- Use full file paths, not relative references
+- Keep only key error lines in ### Errors & Blockers (no full stack traces)
+- Mark completed items explicitly in ### Current Progress
+- Update "Files modified" and "Files read" lists in ### State
+- Before deliver_patch: set ### Remaining Work to "(none)" if complete, or list what remains
+
 Failure to update the journal is considered a task failure.
+The journal is your persistent memory — if context is reset, you will recover from it.
 
 # Tool usage policy
 - Use read (not cat) to examine files before editing
 - Use edit for precise changes. You MUST read a file before editing it.
 - Use write only for new files or complete rewrites
+- Use grep to search file contents by regex pattern — prefer over bash grep
+- Use find to discover files by glob pattern — prefer over bash find
+- Use ls to list directory contents with metadata
 - Batch independent tool calls in a single message for parallel execution
 
 # Verification (MANDATORY)
@@ -63,6 +74,11 @@ Verify commands from README or package.json — never assume.
 - Chain: git add . && git commit -m "descriptive message"
 - Use conventional commits format (fix:, feat:, refactor:, etc.)
 - Skip files containing secrets (.env, credentials.json)
+
+# Iteration limit
+You have a hard limit of ${ctx.maxIterations} iterations (LLM turns).
+When you approach this limit, prioritize delivering patches with your current progress.
+If you receive a steering message about the iteration limit, call deliver_patch immediately.
 
 # Essential constraints
 - Your working code is in /workspace
