@@ -33,7 +33,7 @@ export class ContextManager {
 
   onEvent(event: any): void {
     if (event.type === 'message_end') {
-      const usage = event.usage;
+      const usage = event.message?.usage;
       if (usage && typeof usage === 'object') {
         if (typeof usage.input === 'number') this.totalInputTokens += usage.input;
         if (typeof usage.output === 'number') this.totalOutputTokens += usage.output;

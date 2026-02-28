@@ -28,16 +28,17 @@ describe('ContextManager', () => {
   describe('token tracking', () => {
     it('accumulates input and output tokens from message_end events', () => {
       const { manager } = makeManager();
-      manager.onEvent({ type: 'message_end', usage: { input: 100, output: 50 } });
-      manager.onEvent({ type: 'message_end', usage: { input: 200, output: 75 } });
+      manager.onEvent({ type: 'message_end', message: { usage: { input: 100, output: 50 } } });
+      manager.onEvent({ type: 'message_end', message: { usage: { input: 200, output: 75 } } });
       expect(manager.getTokenSummary()).toEqual({ input: 300, output: 125 });
     });
 
     it('handles missing usage gracefully', () => {
       const { manager } = makeManager();
       manager.onEvent({ type: 'message_end' });
-      manager.onEvent({ type: 'message_end', usage: null });
-      manager.onEvent({ type: 'message_end', usage: {} });
+      manager.onEvent({ type: 'message_end', message: null });
+      manager.onEvent({ type: 'message_end', message: {} });
+      manager.onEvent({ type: 'message_end', message: { usage: null } });
       expect(manager.getTokenSummary()).toEqual({ input: 0, output: 0 });
     });
 
@@ -52,19 +53,19 @@ describe('ContextManager', () => {
   describe('shouldReset', () => {
     it('returns true when input tokens exceed 80% of context window', () => {
       const { manager } = makeManager({ contextWindow: 1000 });
-      manager.onEvent({ type: 'message_end', usage: { input: 810, output: 10 } });
+      manager.onEvent({ type: 'message_end', message: { usage: { input: 810, output: 10 } } });
       expect(manager.shouldReset()).toBe(true);
     });
 
     it('returns false when input tokens are under 80% of context window', () => {
       const { manager } = makeManager({ contextWindow: 1000 });
-      manager.onEvent({ type: 'message_end', usage: { input: 790, output: 10 } });
+      manager.onEvent({ type: 'message_end', message: { usage: { input: 790, output: 10 } } });
       expect(manager.shouldReset()).toBe(false);
     });
 
     it('returns true at exactly 80%', () => {
       const { manager } = makeManager({ contextWindow: 1000 });
-      manager.onEvent({ type: 'message_end', usage: { input: 800, output: 0 } });
+      manager.onEvent({ type: 'message_end', message: { usage: { input: 800, output: 0 } } });
       expect(manager.shouldReset()).toBe(true);
     });
   });
@@ -79,7 +80,7 @@ describe('ContextManager', () => {
 
     it('does not count non-turn_end events as turns', () => {
       const { manager } = makeManager();
-      manager.onEvent({ type: 'message_end', usage: { input: 10, output: 5 } });
+      manager.onEvent({ type: 'message_end', message: { usage: { input: 10, output: 5 } } });
       expect(manager.turns).toBe(0);
     });
 
@@ -129,7 +130,7 @@ describe('ContextManager', () => {
     it('rotates journal, resets token counters, returns recovery message', async () => {
       const { manager, dir, journalPath } = makeManager();
       // Accumulate some tokens
-      manager.onEvent({ type: 'message_end', usage: { input: 500, output: 200 } });
+      manager.onEvent({ type: 'message_end', message: { usage: { input: 500, output: 200 } } });
       expect(manager.getTokenSummary()).toEqual({ input: 500, output: 200 });
 
       const recovery = await manager.performReset();
