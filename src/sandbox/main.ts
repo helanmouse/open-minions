@@ -1,6 +1,6 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import { getModel } from '@mariozechner/pi-ai';
-import { bashTool, editTool, readTool, writeTool } from '@mariozechner/coding-agent';
+import { bashTool, editTool, readTool, writeTool } from './tools/coding.js';
 import { createDeliverPatchTool } from './tools/deliver-patch.js';
 import { buildSandboxSystemPrompt } from './prompts.js';
 import { readFileSync, writeFileSync, readdirSync } from 'fs';
@@ -90,13 +90,32 @@ async function main() {
 
   // Subscribe to events for status tracking
   agent.subscribe((event: any) => {
+    try {
+      if (event.type === 'tool_execution_start') {
+        console.error(`[sandbox:tool] ${event.toolName} args=${JSON.stringify(event.args ?? event.input ?? {}).substring(0, 200)}`);
+      } else if (event.type === 'tool_execution_end') {
+        console.error(`[sandbox:tool_done] ${event.toolName} error=${event.isError || false}`);
+      } else if (event.type === 'message_end') {
+        const msg = event.message;
+        const types = msg?.content?.map((c: any) => c.type).join(',') || '';
+        console.error(`[sandbox:msg] stopReason=${msg?.stopReason} types=${types}`);
+      } else if (event.type === 'agent_end') {
+        const last = event.messages?.[event.messages.length - 1];
+        if (last?.errorMessage) console.error(`[sandbox:error] ${last.errorMessage}`);
+        console.error(`[sandbox:event] agent_end`);
+      }
+    } catch (e) {
+      // Never let logging crash the agent
+    }
     if (event.type === 'turn_start' || event.type === 'tool_execution_start') {
       updateStatus(event);
     }
   });
 
   // Execute task
+  console.error('[sandbox] Calling agent.prompt()...');
   await agent.prompt(ctx.description);
+  console.error(`[sandbox] agent.prompt() returned, error=${(agent as any)._state?.error || 'none'}`);
 }
 
 function updateStatus(event: any): void {

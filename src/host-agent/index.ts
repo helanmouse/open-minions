@@ -107,13 +107,13 @@ export class HostAgent {
     let llmApiKey = process.env.LLM_API_KEY || '';
     let llmBaseUrl = process.env.LLM_BASE_URL || '';
 
-    // Use MinionsConfig to read from .pi/ config files if env vars are empty
+    // .pi/ config files are the source of truth — always prefer them over env vars
     if (this.config) {
       try {
         const rawConfig = this.config.getRawProviderConfig();
         const model = await this.config.getModel();
-        if (!llmProvider) llmProvider = rawConfig.provider;
-        if (!llmModel) llmModel = rawConfig.model;
+        llmProvider = rawConfig.provider;
+        llmModel = rawConfig.model;
         if (!llmApiKey) llmApiKey = await this.config.getApiKey(model, rawConfig.provider);
         // Don't write baseUrl — sandbox will resolve it via alias
       } catch {

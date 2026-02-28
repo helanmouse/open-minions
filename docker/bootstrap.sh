@@ -66,9 +66,9 @@ start_agent() {
     set +a
   fi
 
-  local agent_bin="$PI_RUNTIME/sandbox-main.js"
+  local agent_bin="$PI_RUNTIME/sandbox/main.js"
   if [ ! -f "$agent_bin" ]; then
-    err "sandbox-main.js not found: $agent_bin"
+    err "sandbox/main.js not found: $agent_bin"
     err "Run 'npm run build:sandbox' to build sandbox entry point"
     exit 1
   fi
