@@ -12,8 +12,10 @@ const files = [
   { src: 'sandbox/presets.js', dst: 'sandbox/presets.js' },
   { src: 'sandbox/prompts.js', dst: 'sandbox/prompts.js' },
   { src: 'sandbox/journal.js', dst: 'sandbox/journal.js' },
+  { src: 'sandbox/context-manager.js', dst: 'sandbox/context-manager.js' },
   { src: 'sandbox/tools/deliver-patch.js', dst: 'sandbox/tools/deliver-patch.js' },
   { src: 'sandbox/tools/coding.js', dst: 'sandbox/tools/coding.js' },
+  { src: 'sandbox/tools/search.js', dst: 'sandbox/tools/search.js' },
   { src: 'llm/provider-aliases.js', dst: 'llm/provider-aliases.js' },
   { src: 'types/shared.js', dst: 'types/shared.js' },
 ];

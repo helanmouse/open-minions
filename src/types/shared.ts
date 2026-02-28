@@ -1,6 +1,7 @@
 export const EXIT_SUCCESS = 0;
 export const EXIT_CRASH = 1;
 export const EXIT_NO_PATCHES = 2;
+export const EXIT_TIMEOUT = 3;
 
 export const SANDBOX_PATHS = {
   JOURNAL: '/minion-run/journal.md',
