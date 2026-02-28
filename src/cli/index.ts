@@ -164,16 +164,18 @@ program
 
 program
   .command('setup')
-  .description('Configure LLM provider and API key')
+  .description('Configure LLM provider and API key (TUI)')
   .action(async () => {
     const minionHome = join(homedir(), '.minion');
-
-    console.log('Minions V3 Setup\n');
-
     const setup = new TuiSetup(minionHome);
 
-    try {
-      // Simple prompt-based setup as fallback until interactive TUI is complete
+    // Use TUI if we have a TTY, otherwise fallback to readline
+    const isTTY = process.stdin.isTTY && process.stdout.isTTY;
+
+    if (!isTTY) {
+      // Non-interactive: use readline prompts
+      console.log('Minions V3 Setup (non-interactive mode)\n');
+
       const readline = (await import('readline')).createInterface({
         input: process.stdin,
         output: process.stdout,
@@ -192,7 +194,6 @@ program
           process.exit(1);
         }
 
-        // Use TuiSetup to save the configuration
         setup.setMockConfig({ provider, model, apiKey });
         const result = await setup.run();
 
@@ -202,9 +203,19 @@ program
       } finally {
         readline.close();
       }
-    } catch (error: any) {
-      console.error(`Setup failed: ${error.message}`);
-      process.exit(1);
+    } else {
+      // Interactive: use TUI
+      try {
+        const result = await setup.run();
+        console.log(`\n✓ Configuration saved to ${minionHome}/.pi/`);
+        console.log(`  Provider: ${result.config.provider}`);
+        console.log(`  Model: ${result.config.model}`);
+      } catch (error: any) {
+        if (error.message !== 'Cancelled by user') {
+          console.error(`Setup failed: ${error.message}`);
+        }
+        process.exit(1);
+      }
     }
   });
 
