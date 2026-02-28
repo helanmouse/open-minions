@@ -45,6 +45,18 @@ verify_pi_runtime() {
   log "pi-runtime ready (mounted from host)"
 }
 
+# Copy host repo to writable workspace
+prepare_workspace() {
+  if [ -d /host-repo ]; then
+    log "Copying host repo to /workspace..."
+    cp -a /host-repo /workspace
+    log "Workspace ready: /workspace"
+  else
+    err "/host-repo not mounted"
+    exit 1
+  fi
+}
+
 # Start sandbox agent
 start_agent() {
   if [ -f "$MINIONS_RUN/.env" ]; then
@@ -72,6 +84,7 @@ main() {
 
   ensure_node
   verify_pi_runtime
+  prepare_workspace
   start_agent
 }
 

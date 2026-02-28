@@ -9,12 +9,14 @@ import { TaskStore } from '../task/store.js';
 import { parseTaskDescription } from './task-parser.js';
 import { prepareRepo, cleanupRepo } from './repo-preparer.js';
 import { applyPatches, pushRepo } from './patch-applier.js';
+import { MinionsConfig } from './config.js';
 
 export interface HostAgentOptions {
   llm: LLMAdapter;
   sandbox: Sandbox;
   store: TaskStore;
   minionHome: string;  // ~/.minion
+  config?: MinionsConfig;
 }
 
 export interface RunOptions {
@@ -31,12 +33,14 @@ export class HostAgent {
   private sandbox: Sandbox;
   private store: TaskStore;
   private minionHome: string;
+  private config?: MinionsConfig;
 
   constructor(opts: HostAgentOptions) {
     this.llm = opts.llm;
     this.sandbox = opts.sandbox;
     this.store = opts.store;
     this.minionHome = opts.minionHome;
+    this.config = opts.config;
   }
 
   async prepare(rawInput: string, opts: RunOptions = {}): Promise<string> {
@@ -96,11 +100,29 @@ export class HostAgent {
     writeFileSync(join(runDir, 'context.json'), JSON.stringify(context, null, 2));
 
     // Step 7: Write .env for LLM credentials
+    let llmProvider = process.env.LLM_PROVIDER || '';
+    let llmModel = process.env.LLM_MODEL || '';
+    let llmApiKey = process.env.LLM_API_KEY || '';
+    let llmBaseUrl = process.env.LLM_BASE_URL || '';
+
+    // Use MinionsConfig to read from .pi/ config files if env vars are empty
+    if (this.config) {
+      try {
+        const model = await this.config.getModel();
+        if (!llmProvider) llmProvider = model.provider;
+        if (!llmModel) llmModel = model.id;
+        if (!llmApiKey) llmApiKey = await this.config.getApiKey(model);
+        if (!llmBaseUrl && model.baseUrl) llmBaseUrl = model.baseUrl;
+      } catch {
+        // Fall through to env vars
+      }
+    }
+
     writeFileSync(join(runDir, '.env'), [
-      `LLM_PROVIDER=${process.env.LLM_PROVIDER || ''}`,
-      `LLM_MODEL=${process.env.LLM_MODEL || ''}`,
-      `LLM_API_KEY=${process.env.LLM_API_KEY || ''}`,
-      `LLM_BASE_URL=${process.env.LLM_BASE_URL || ''}`,
+      `LLM_PROVIDER=${llmProvider}`,
+      `LLM_MODEL=${llmModel}`,
+      `LLM_API_KEY=${llmApiKey}`,
+      `LLM_BASE_URL=${llmBaseUrl}`,
     ].join('\n'));
 
     return taskId;

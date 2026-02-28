@@ -19,6 +19,7 @@ export function createLLMAdapter(config: LLMConfig): LLMAdapter {
     case 'pi':
       return new PiAiAdapter(config as any);
     default:
-      throw new Error(`Unknown LLM provider: ${config.provider}`);
+      // Fall back to PiAiAdapter for all pi-ai supported providers
+      return new PiAiAdapter(config as any);
   }
 }

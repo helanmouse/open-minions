@@ -70,10 +70,11 @@ program
     const description = descParts.join(' ');
     const minionHome = join(homedir(), '.minion');
     const config = loadConfig();
+    const minionConfig = new MinionsConfig(process.cwd(), minionHome);
     const llm = createLLMAdapter(config.llm);
     const sandbox = new DockerSandbox(minionHome);
     const store = new TaskStore(join(minionHome, 'tasks.json'));
-    const agent = new HostAgent({ llm, sandbox, store, minionHome });
+    const agent = new HostAgent({ llm, sandbox, store, minionHome, config: minionConfig });
 
     const taskId = await agent.prepare(description, {
       repo: opts.repo,

@@ -37,6 +37,23 @@ async function main() {
     process.exit(1);
   }
 
+  // Set provider-specific API key env var for pi-ai
+  const providerEnvKey = `${provider.toUpperCase()}_API_KEY`;
+  if (!process.env[providerEnvKey]) {
+    process.env[providerEnvKey] = apiKey;
+  }
+
+  // Set base URL env var if provided
+  const baseUrl = process.env.LLM_BASE_URL || '';
+  if (baseUrl) {
+    const baseUrlEnvKey = `${provider.toUpperCase()}_BASE_URL`;
+    if (!process.env[baseUrlEnvKey]) {
+      process.env[baseUrlEnvKey] = baseUrl;
+    }
+  }
+
+  console.log(`[sandbox] provider=${provider} model=${model} baseUrl=${baseUrl || '(default)'}`);
+
   // Get Model object using getModel()
   const modelObj = getModel(provider as any, model as any);
 
@@ -86,4 +103,7 @@ function updateStatus(event: any): void {
   }
 }
 
-main().catch(console.error);
+main().catch(err => {
+  console.error('[sandbox] Fatal error:', err);
+  process.exit(1);
+});

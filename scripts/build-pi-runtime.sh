@@ -17,6 +17,8 @@ cd "$PI_RUNTIME_DIR"
 if [ ! -f package.json ]; then
   log "Initializing package.json..."
   npm init -y
+  # sandbox-main.js uses ESM imports
+  sed -i.bak 's/"commonjs"/"module"/' package.json && rm -f package.json.bak
 fi
 
 # Install pi-mono packages

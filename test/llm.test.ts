@@ -18,9 +18,11 @@ describe('LLM factory', () => {
     expect(adapter.provider).toBe('anthropic');
   });
 
-  it('throws on unknown provider', () => {
-    expect(() => createLLMAdapter({
+  it('falls back to PiAiAdapter for unknown provider', () => {
+    const adapter = createLLMAdapter({
       provider: 'unknown' as any, model: '', apiKey: '', baseUrl: undefined,
-    })).toThrow();
+    });
+    expect(adapter).toBeDefined();
+    expect(adapter.provider).toBe('pi-ai');
   });
 });
