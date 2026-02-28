@@ -101,6 +101,7 @@ export class HostAgent {
     writeFileSync(join(runDir, 'context.json'), JSON.stringify(context, null, 2));
 
     // Step 7: Write .env for LLM credentials
+    // Write the user's original provider name (e.g. "zhipu") so sandbox can resolve aliases
     let llmProvider = process.env.LLM_PROVIDER || '';
     let llmModel = process.env.LLM_MODEL || '';
     let llmApiKey = process.env.LLM_API_KEY || '';
@@ -109,11 +110,12 @@ export class HostAgent {
     // Use MinionsConfig to read from .pi/ config files if env vars are empty
     if (this.config) {
       try {
+        const rawConfig = this.config.getRawProviderConfig();
         const model = await this.config.getModel();
-        if (!llmProvider) llmProvider = model.provider;
-        if (!llmModel) llmModel = model.id;
-        if (!llmApiKey) llmApiKey = await this.config.getApiKey(model);
-        if (!llmBaseUrl && model.baseUrl) llmBaseUrl = model.baseUrl;
+        if (!llmProvider) llmProvider = rawConfig.provider;
+        if (!llmModel) llmModel = rawConfig.model;
+        if (!llmApiKey) llmApiKey = await this.config.getApiKey(model, rawConfig.provider);
+        // Don't write baseUrl — sandbox will resolve it via alias
       } catch {
         // Fall through to env vars
       }

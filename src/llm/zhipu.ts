@@ -130,9 +130,10 @@ export class ZhipuAdapter implements LLMAdapter {
     const choice = data.choices[0];
     const message = choice.message;
 
-    // Output text content
-    if (message.content) {
-      yield { type: 'text_delta', content: message.content };
+    // Output text content (reasoning models like glm-5 put text in reasoning_content)
+    const text = message.content || message.reasoning_content || '';
+    if (text) {
+      yield { type: 'text_delta', content: text };
     }
 
     // Handle tool calls (OpenAI format)

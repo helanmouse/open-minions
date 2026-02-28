@@ -5,6 +5,7 @@ import { createDeliverPatchTool } from './tools/deliver-patch.js';
 import { buildSandboxSystemPrompt } from './prompts.js';
 import { readFileSync, writeFileSync, readdirSync } from 'fs';
 import { seedJournal, readJournal } from './journal.js';
+import { resolveProvider } from '../llm/provider-aliases.js';
 import { SANDBOX_PATHS, EXIT_SUCCESS, EXIT_CRASH, EXIT_NO_PATCHES } from '../types/shared.js';
 
 interface TaskContext {
@@ -39,25 +40,29 @@ async function main() {
     process.exit(1);
   }
 
-  // Set provider-specific API key env var for pi-ai
-  const providerEnvKey = `${provider.toUpperCase()}_API_KEY`;
+  // Resolve alias: e.g. zhipu → zai with CN baseUrl
+  // LLM_BASE_URL env var takes priority over alias default
+  const envBaseUrl = process.env.LLM_BASE_URL || '';
+  const resolved = resolveProvider(provider, model, envBaseUrl || undefined);
+
+  // Set provider-specific API key env var for pi-ai (use resolved piProvider)
+  const providerEnvKey = `${resolved.piProvider.toUpperCase()}_API_KEY`;
   if (!process.env[providerEnvKey]) {
     process.env[providerEnvKey] = apiKey;
   }
 
-  // Set base URL env var if provided
-  const baseUrl = process.env.LLM_BASE_URL || '';
-  if (baseUrl) {
-    const baseUrlEnvKey = `${provider.toUpperCase()}_BASE_URL`;
+  // Set base URL env var if resolved
+  if (resolved.baseUrl) {
+    const baseUrlEnvKey = `${resolved.piProvider.toUpperCase()}_BASE_URL`;
     if (!process.env[baseUrlEnvKey]) {
-      process.env[baseUrlEnvKey] = baseUrl;
+      process.env[baseUrlEnvKey] = resolved.baseUrl;
     }
   }
 
-  console.log(`[sandbox] provider=${provider} model=${model} baseUrl=${baseUrl || '(default)'}`);
+  console.log(`[sandbox] provider=${provider} resolved=${resolved.piProvider} model=${resolved.modelId} baseUrl=${resolved.baseUrl || '(default)'}`);
 
   // Get Model object using getModel()
-  const modelObj = getModel(provider as any, model as any);
+  const modelObj = getModel(resolved.piProvider as any, resolved.modelId as any);
 
   // Use coding-agent tools + custom deliver_patch tool
   const tools: any[] = [

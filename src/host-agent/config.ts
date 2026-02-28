@@ -1,6 +1,7 @@
 import { getModel } from '@mariozechner/pi-ai';
 import type { Model, Api } from '@mariozechner/pi-ai';
 import type { LLMConfig } from '../llm/types.js';
+import { resolveProvider } from '../llm/provider-aliases.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -33,6 +34,7 @@ export class MinionsConfig {
     const modelsJson = join(this.agentDir, '.pi', 'models.json');
     let provider = process.env.LLM_PROVIDER || 'openai';
     let model = process.env.LLM_MODEL || 'gpt-4o';
+    let userBaseUrl = '';
 
     try {
       const content = JSON.parse(readFileSync(modelsJson, 'utf-8'));
@@ -40,7 +42,12 @@ export class MinionsConfig {
       const providers = Object.keys(content.providers || {});
       if (providers.length > 0) {
         provider = providers[0];
-        const models = content.providers[provider].models || [];
+        const providerConfig = content.providers[provider];
+        // Preserve user-configured baseUrl (user override > alias default > pi-ai default)
+        if (providerConfig.baseUrl) {
+          userBaseUrl = providerConfig.baseUrl;
+        }
+        const models = providerConfig.models || [];
         if (models.length > 0) {
           model = models[0].id;
         }
@@ -49,14 +56,28 @@ export class MinionsConfig {
       // Fall back to env vars
     }
 
-    return getModel(provider as any, model as any);
+    // Resolve alias: e.g. zhipu → zai with CN baseUrl
+    const resolved = resolveProvider(provider, model, userBaseUrl);
+    const modelObj = getModel(resolved.piProvider as any, resolved.modelId as any);
+    if (resolved.baseUrl) {
+      (modelObj as any).baseUrl = resolved.baseUrl;
+    }
+    return modelObj;
   }
 
-  async getApiKey(model: Model<Api>): Promise<string> {
-    // Check environment variable first
+  async getApiKey(model: Model<Api>, originalProvider?: string): Promise<string> {
+    // Check environment variable for resolved provider first (e.g. ZAI_API_KEY)
     const envKey = `${model.provider.toUpperCase()}_API_KEY`;
     if (process.env[envKey]) {
       return process.env[envKey]!;
+    }
+
+    // Check env var for original/alias provider (e.g. ZHIPU_API_KEY)
+    if (originalProvider && originalProvider !== model.provider) {
+      const aliasEnvKey = `${originalProvider.toUpperCase()}_API_KEY`;
+      if (process.env[aliasEnvKey]) {
+        return process.env[aliasEnvKey]!;
+      }
     }
 
     // Check LLM_API_KEY as fallback
@@ -64,18 +85,50 @@ export class MinionsConfig {
       return process.env.LLM_API_KEY;
     }
 
-    // Check .pi/config.json for stored API keys
+    // Check .pi/config.json for stored API keys (try both provider names)
     const configPath = join(this.agentDir, '.pi', 'config.json');
     try {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-      if (config.apiKeys && config.apiKeys[model.provider]) {
-        return config.apiKeys[model.provider];
+      if (config.apiKeys) {
+        if (config.apiKeys[model.provider]) {
+          return config.apiKeys[model.provider];
+        }
+        if (originalProvider && config.apiKeys[originalProvider]) {
+          return config.apiKeys[originalProvider];
+        }
       }
     } catch {
       // Fall through
     }
 
     throw new Error(`API key not found for ${model.provider}. Set ${envKey} or run: minion setup`);
+  }
+
+  /**
+   * Return the raw user-configured provider and model names (before alias resolution).
+   * Used by HostAgent to write .env so sandbox can resolve aliases itself.
+   */
+  getRawProviderConfig(): { provider: string; model: string } {
+    const modelsJson = join(this.agentDir, '.pi', 'models.json');
+    let provider = process.env.LLM_PROVIDER || 'openai';
+    let model = process.env.LLM_MODEL || 'gpt-4o';
+
+    try {
+      const content = JSON.parse(readFileSync(modelsJson, 'utf-8'));
+      const providers = Object.keys(content.providers || {});
+      if (providers.length > 0) {
+        provider = providers[0];
+        const providerConfig = content.providers[provider];
+        const models = providerConfig.models || [];
+        if (models.length > 0) {
+          model = models[0].id;
+        }
+      }
+    } catch {
+      // Fall back to env vars
+    }
+
+    return { provider, model };
   }
 
   getLLMConfig(): LLMConfig {
