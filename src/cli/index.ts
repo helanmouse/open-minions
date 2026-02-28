@@ -166,8 +166,12 @@ program
   .command('setup')
   .description('Configure LLM provider and API key (TUI)')
   .action(async () => {
+    console.error('DEBUG: Setup command started');
     const minionHome = join(homedir(), '.minion');
+    console.error('DEBUG: minionHome =', minionHome);
+    console.error('DEBUG: About to create TuiSetup');
     const setup = new TuiSetup(minionHome);
+    console.error('DEBUG: TuiSetup created successfully');
 
     // Use TUI if we have a TTY, otherwise fallback to readline
     const isTTY = process.stdin.isTTY && process.stdout.isTTY;

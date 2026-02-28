@@ -3,7 +3,7 @@ import { mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { createInterface } from 'readline';
-import { TUI, SelectList, Container, TextComponent } from '@mariozechner/pi-tui';
+import { TUI, SelectList, Container, TextComponent, ProcessTerminal } from '@mariozechner/pi-tui';
 import { getProviders, getModels } from '@mariozechner/pi-ai';
 import type { SelectItem } from '@mariozechner/pi-tui';
 import type { SetupConfig, SetupResult } from './types.js';
@@ -124,19 +124,23 @@ export class TuiSetup {
    */
   private async runSelectList(title: string, items: SelectItem[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      const ui = new TUI();
+      const terminal = new ProcessTerminal();
+      const ui = new TUI(terminal);
       const container = new Container();
 
       // Add title
-      container.addChild(new TextComponent(title, { bottom: 1 }));
+      container.addChild(new TextComponent(title, { bottom: 1, top: 0 }));
 
       // Create select list
-      const selectList = new SelectList(items);
+      const maxVisible = Math.min(items.length, 15);
+      const selectList = new SelectList(items, maxVisible);
       selectList.onSelect = (item: SelectItem) => {
+        console.error('\nSelected:', item.value);
         ui.stop();
         resolve(item.value);
       };
       selectList.onCancel = () => {
+        console.error('\nCancelled');
         ui.stop();
         reject(new Error('Selection cancelled'));
       };
@@ -145,7 +149,9 @@ export class TuiSetup {
       ui.addChild(container);
       ui.setFocus(selectList);
 
+      console.error('Starting TUI...');
       ui.start();
+      console.error('TUI started');
     });
   }
 

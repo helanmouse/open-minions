@@ -1,0 +1,11 @@
+{
+  "taskId": "test-001",
+  "description": "List all TypeScript files in the src directory",
+  "repoType": "local",
+  "branch": "test-branch",
+  "baseBranch": "main",
+  "projectAnalysis": {},
+  "rules": [],
+  "maxIterations": 5,
+  "timeout": 5
+}
