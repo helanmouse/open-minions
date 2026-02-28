@@ -1,20 +1,27 @@
-import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, renameSync, readdirSync } from 'fs';
+import { dirname, join, basename } from 'path';
 
-const TEMPLATE = `## Plan
+const TEMPLATE = `## Journal Entry 1
 
-<!-- Update this section immediately after reading the task -->
+### State
+- Phase: planning
+- Files modified: (none)
+- Files read: (none)
+- Tests: not-run
+- Commits: (none)
+- Tokens used: 0/0
 
-## Execution Log
+### Key Decisions
+(none yet)
 
-<!-- Append to this section after each significant action -->
+### Current Progress
+(none yet)
 
-## Verification
+### Remaining Work
+(task not started)
 
-<!-- Fill this section after running build/lint/test -->
-
-## Status
-
-<!-- Must be one of: COMPLETED, BLOCKED — <reason>, PARTIAL — <what remains> -->
+### Errors & Blockers
+(none)
 `;
 
 export function seedJournal(path: string): void {
@@ -28,4 +35,23 @@ export function readJournal(path: string): string {
   } catch {
     return '';
   }
+}
+
+export function rotateJournal(path: string): string {
+  const dir = dirname(path);
+  const files = readdirSync(dir);
+  const pattern = /^journal-(\d{3})\.md$/;
+  let max = 0;
+  for (const f of files) {
+    const m = pattern.exec(f);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  const next = String(max + 1).padStart(3, '0');
+  const rotatedPath = join(dir, `journal-${next}.md`);
+  renameSync(path, rotatedPath);
+  writeFileSync(path, TEMPLATE, 'utf-8');
+  return rotatedPath;
 }
