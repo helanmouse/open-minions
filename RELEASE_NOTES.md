@@ -6,9 +6,13 @@ Minions V3 integrates [pi-mono](https://github.com/badlogic/pi-mono) framework f
 
 - **LLM layer**: Migrated to `@mariozechner/pi-ai` for unified provider interface
 - **Agent runtime**: Sandbox Agent uses `@mariozechner/pi-agent-core` Agent class
-- **Tools**: File tools from `@mariozechner/coding-agent` (bash, read, edit, write)
+- **Tools**: Inlined coding tools (bash, read, edit, write) — no external coding-agent dependency
 - **Offline mounting**: pi-runtime pre-built on host, mounted to containers
 - **Configuration**: Interactive `minion setup` command with pi-mono compatible config
+- **Container Presets**: Pre-configured git identity, timezone, locale via `~/.minion/config.json`
+- **Agent Journal**: Mandatory execution journal for failure diagnostics
+- **Provider Aliases**: Multi-region API endpoint aliases (e.g. zhipu → zai with CN baseUrl)
+- **Multi-commit Patches**: deliver_patch supports multiple commits via `git format-patch`
 
 ## Breaking Changes from V2
 
@@ -70,17 +74,13 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 
 - `@mariozechner/pi-ai`: v0.55.1
 - `@mariozechner/pi-agent-core`: v0.55.1
-- `@mariozechner/coding-agent`: v0.5.48
 - `@sinclair/typebox`: v0.34.48
 
 ## Known Issues
 
-- pi-mono TUI (settings wizard) is not yet integrated; using simplified prompt-based setup
 - Some pi-mono APIs documented in design differ from published packages
 
 ## Future Work
 
-- Integrate pi-mono's full TUI for settings management
-- Add support for custom model definitions via models.json
 - Implement task result caching
-- Add multi-file patch support
+- Add e2e integration tests

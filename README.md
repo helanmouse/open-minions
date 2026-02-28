@@ -21,8 +21,8 @@ User: "Fix login page crash when email is empty"
         │
         ▼
    Docker Sandbox (isolated container)
-        │  Clone repo → Plan → Code → Test → Lint → Commit
-        │  (pi-agent-core + coding-agent tools)
+        │  Clone repo → Journal → Plan → Code → Test → Lint → Commit
+        │  (pi-agent-core + inlined coding tools)
         │
         ▼
    Patches delivered via git format-patch
@@ -37,8 +37,9 @@ User: "Fix login page crash when email is empty"
 
 - **Host Agent** — Runs on your machine using `@mariozechner/pi-ai` for LLM calls
 - **Sandbox Agent** — Runs in Docker container using `@mariozechner/pi-agent-core` Agent class
-- **Tools** — From `@mariozechner/coding-agent` (bash, read, edit, write) + custom deliver_patch
+- **Tools** — Inlined coding tools (bash, read, edit, write) + custom deliver_patch
 - **Offline Runtime** — pi-runtime pre-built on host, mounted to containers (no npm install inside)
+- **Container Presets** — Pre-configured git identity, timezone, locale via `~/.minion/config.json`
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -49,8 +50,8 @@ User: "Fix login page crash when email is empty"
                    │ docker run (bootstrap.sh)
 ┌──────────────────▼──────────────────────────┐
 │  Sandbox Agent (pi-agent-core Agent)        │
-│  Clone → Plan → Code → Test → Lint →       │
-│  Commit → deliver_patch → git format-patch │
+│  Clone → Journal → Plan → Code → Test →   │
+│  Lint → Commit → deliver_patch             │
 └─────────────────────────────────────────────┘
            ↑ pi-runtime mounted from host
            ~/.minion/pi-runtime → /opt/pi-runtime
@@ -65,6 +66,9 @@ User: "Fix login page crash when email is empty"
 - **Patch-Based Delivery** — Results via `git format-patch` → `git am`
 - **Multiple LLM Providers** — 25 supported providers including OpenAI, Anthropic, Google, DeepSeek, Zhipu, and more
 - **Interactive TUI Setup** — Terminal-based UI for easy configuration with keyboard navigation
+- **Container Presets** — Pre-configured git identity, timezone, locale (customizable)
+- **Agent Journal** — Mandatory execution journal for better failure diagnostics
+- **Provider Aliases** — Multi-region API endpoints via alias mechanism
 
 ### Quick Start
 
@@ -145,7 +149,8 @@ minion config                              # View current configuration
 See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for detailed configuration options including:
 
 - Multiple LLM providers (OpenAI, Anthropic, Google, DeepSeek, Zhipu)
-- Custom base URLs
+- Custom base URLs and provider aliases
+- Container presets (git identity, timezone, locale)
 - Environment variable configuration
 - models.json format for pi-mono compatibility
 
@@ -186,8 +191,8 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
         │
         ▼
    Docker 沙箱（隔离容器）
-        │  克隆仓库 → 规划 → 编码 → 测试 → Lint → 提交
-        │  (pi-agent-core + coding-agent 工具)
+        │  克隆仓库 → 日志 → 规划 → 编码 → 测试 → Lint → 提交
+        │  (pi-agent-core + 内置编码工具)
         │
         ▼
    通过 git format-patch 交付补丁
@@ -202,8 +207,9 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 
 - **Host Agent** — 在本机运行，使用 `@mariozechner/pi-ai` 进行 LLM 调用
 - **Sandbox Agent** — 在 Docker 容器内运行，使用 `@mariozechner/pi-agent-core` Agent 类
-- **工具** — 来自 `@mariozechner/coding-agent`（bash、read、edit、write）+ 自定义 deliver_patch
+- **工具** — 内置编码工具（bash、read、edit、write）+ 自定义 deliver_patch
 - **离线运行时** — pi-runtime 在宿主机预构建，挂载到容器内
+- **容器预设** — 预配置 git 身份、时区、语言环境，可通过 `~/.minion/config.json` 自定义
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -230,6 +236,9 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 - **补丁交付** — 通过 `git format-patch` → `git am` 交付结果
 - **多 LLM 支持** — 支持 25 个 LLM 提供商，包括 OpenAI、Anthropic、Google、DeepSeek、智谱等
 - **交互式 TUI 配置** — 终端图形界面，支持键盘导航，配置更便捷
+- **容器预设** — 预配置 git 身份、时区、语言环境（可自定义）
+- **代理日志** — 强制执行日志，便于故障诊断
+- **提供商别名** — 多区域 API 端点别名机制
 
 ### 快速开始
 
@@ -310,7 +319,8 @@ minion config                              # 查看当前配置
 详见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)，包括：
 
 - 多 LLM 提供商（OpenAI、Anthropic、Google、DeepSeek、智谱）
-- 自定义 API 地址
+- 自定义 API 地址和提供商别名
+- 容器预设（git 身份、时区、语言环境）
 - 环境变量配置
 - 与 pi-mono 兼容的 models.json 格式
 

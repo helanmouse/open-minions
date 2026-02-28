@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Open Minions is an autonomous AI coding agent system inspired by Stripe's Minions. It uses a dual-layer architecture with Docker sandbox isolation to safely execute code changes and deliver them via Git patches.
+Open Minions is an autonomous AI coding agent system inspired by Stripe's Minions. It uses a dual-layer architecture with Docker sandbox isolation to safely execute code changes and deliver them via Git patches. V3 integrates pi-mono for unified LLM and agent runtime.
 
 ## When Working on This Project
 
@@ -12,19 +12,21 @@ Always keep in mind the dual-agent pattern:
 
 1. **Host Agent** - Runs on the user's machine with limited permissions. It:
    - Parses natural language task descriptions
-   - Analyzes target repositories
+   - Analyzes target repositories (LLM-powered project scan)
    - Prepares git repositories
+   - Writes `.env` with LLM credentials and container presets
    - Launches and monitors Docker containers
    - Applies patches using `git am`
    - Pushes changes to remote repositories
 
 2. **Sandbox Agent** - Runs inside a Docker container with full autonomy. It:
-   - Clones the repository from the host-repo mount
+   - Works in `/workspace` (copied from host-repo mount)
    - Plans the approach based on task context
-   - Executes code changes using available tools
+   - Maintains a mandatory journal at `/minion-run/journal.md`
+   - Executes code changes using inlined coding tools (bash, read, edit, write)
    - Runs tests and linters
-   - Commits changes with proper messages
-   - Generates patches via `git format-patch`
+   - Commits changes and delivers patches via `deliver_patch` tool
+   - Generates patches via `git format-patch` (supports multi-commit)
 
 ### Key File Locations
 
@@ -32,91 +34,99 @@ Always keep in mind the dual-agent pattern:
 |-----------|----------|---------|
 | CLI Entry | `src/cli/index.ts` | Commander.js CLI interface |
 | Host Agent | `src/host-agent/index.ts` | Main host orchestration |
-| Sandbox Agent | `src/agent/main.ts` | Container entry point |
-| Agent Loop | `src/worker/agent-loop.ts` | Tool-based iteration |
-| Tool Registry | `src/tools/registry.ts` | Tool management |
-| LLM Factory | `src/llm/factory.ts` | Adapter creation |
-| Config | `src/config/index.ts` | Zod-based config loading |
+| Host Config | `src/host-agent/config.ts` | Config loading (~/.minion/) |
+| Sandbox Agent | `src/sandbox/main.ts` | Container entry point |
+| Sandbox Prompts | `src/sandbox/prompts.ts` | System prompt for sandbox agent |
+| Sandbox Tools | `src/sandbox/tools/coding.ts` | Inlined bash/read/edit/write tools |
+| Deliver Patch | `src/sandbox/tools/deliver-patch.ts` | Patch generation tool |
+| Container Presets | `src/sandbox/presets.ts` | Git identity, TZ, locale presets |
+| Journal | `src/sandbox/journal.ts` | Agent execution journal |
+| Provider Aliases | `src/llm/provider-aliases.ts` | Multi-region provider alias resolution |
+| LLM Types | `src/llm/types.ts` | LLM adapter interface |
+| Shared Types | `src/types/shared.ts` | Shared constants and types |
+| Bootstrap | `docker/bootstrap.sh` | Container startup script |
+| Copy Script | `scripts/copy-sandbox.js` | Copies sandbox JS to pi-runtime |
 
 ### Coding Conventions
 
 1. **ES Module Imports**: Use `.js` extensions in all imports (Node ESM convention)
    ```typescript
-   import { loadConfig } from '../config/index.js';
+   import { resolvePresets } from '../sandbox/presets.js';
    ```
 
-2. **Type Safety**: Use Zod for runtime validation of configs and inputs
+2. **Type Safety**: Use TypeBox for tool parameter schemas, TypeScript interfaces for internal types
    ```typescript
-   const ConfigSchema = z.object({
-     llm: z.object({ /* ... */ }),
-     sandbox: z.object({ /* ... */ }),
+   const Schema = Type.Object({
+     path: Type.String({ description: 'File path' }),
    });
    ```
 
 3. **Error Handling**: Never swallow errors silently. Propagate with context.
 
-4. **Tool Interface**: All tools must implement `AgentTool`:
+4. **Tool Interface**: Sandbox tools use `@mariozechner/pi-agent-core` AgentTool:
    ```typescript
-   interface AgentTool {
-     name: string;
-     description: string;
-     parameters: Record<string, unknown>;
-     execute(params: Record<string, any>, ctx: ToolContext): Promise<ToolResult>;
-   }
+   import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
+   import { Type, type Static } from '@sinclair/typebox';
    ```
 
 ### Docker Integration Details
 
 When working on Docker-related code:
 - Host repo is mounted at `/host-repo` (read-only)
-- Work directory is `/minion-run`
-- Workspace (writable clone) is `/minion-run/workspace`
+- Run directory is `/minion-run` (context.json, .env, patches/, status.json, journal.md)
+- Workspace (writable copy) is `/workspace`
 - Patches go to `/minion-run/patches/`
 - Status is written to `/minion-run/status.json`
+- Journal is at `/minion-run/journal.md`
+- pi-runtime is mounted at `/opt/pi-runtime` (read-only)
+- `bootstrap.sh` flow: ensure_node → verify_pi_runtime → prepare_workspace → configure_git → start_agent
 
-### Adding New Tools
+### Container Presets
 
-To add a new tool:
+The preset system (`src/sandbox/presets.ts`) provides configurable container parameters:
+- Git identity (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL) — prevents git commit failures
+- Timezone (TZ) and locale (LANG)
+- Defaults are applied automatically; users override via `~/.minion/config.json`:
+  ```json
+  { "presets": { "git.userName": "Your Name", "timezone": "Asia/Shanghai" } }
+  ```
+- Host agent writes presets to `.env`, `bootstrap.sh` applies git config
 
-1. Create file in `src/tools/` (e.g., `src/tools/my-tool.ts`)
-2. Implement `AgentTool` interface
-3. Export as `myTool` constant
-4. Register in `src/agent/main.ts`:
-   ```typescript
-   import { myTool } from '../tools/my-tool.js';
-   // ... in constructor:
-   [bashTool, readTool, /* ... */, myTool].forEach(t => registry.register(t));
-   ```
+### Adding New Sandbox Tools
 
-### Adding LLM Providers
+1. Create or edit in `src/sandbox/tools/`
+2. Use `@mariozechner/pi-agent-core` AgentTool type with TypeBox schema
+3. Register in `src/sandbox/main.ts` tools array
+4. Add compiled `.js` to `scripts/copy-sandbox.js` if it's a new file
 
-To add a new LLM provider:
+### Adding LLM Provider Aliases
 
-1. Create file in `src/llm/` (e.g., `src/llm/myprovider.ts`)
-2. Implement `LLMAdapter` interface
-3. Add to factory in `src/llm/factory.ts`
-4. Update Zod schema in `src/config/index.ts` to include provider option
+To add a provider alias (e.g. regional endpoint):
+1. Edit `src/llm/provider-aliases.ts`
+2. Add entry to the `PROVIDER_ALIASES` map
+3. The alias resolves to a pi-ai provider + baseUrl at runtime
 
 ### Project Status
 
-- **Version**: 2.0.0 (architecture rewrite)
-- **Tests**: Not yet implemented
-- **Build**: Run `npm run build` to compile TypeScript
-- **Docker Image**: Run `npm run docker:build` to build sandbox image
+- **Version**: 3.0.0 (pi-mono integration)
+- **Build**: `npm run build` (TypeScript) + `npm run build:sandbox` (copy to pi-runtime)
+- **Docker Image**: `npm run docker:build`
 
 ### Common Commands
 
 ```bash
-npm run build      # Compile TypeScript to dist/
-npm run lint       # Type check only (tsc --noEmit)
-npm test           # Run tests (Vitest)
-npm run dev:cli    # Run CLI directly with tsx
-npm run docker:build  # Build Docker sandbox image
+npm run build           # Compile TypeScript to dist/
+npm run build:pi-runtime # Build pi-mono offline runtime
+npm run build:sandbox   # Copy sandbox JS to ~/.minion/pi-runtime
+npm run lint            # Type check only (tsc --noEmit)
+npm test                # Run tests (Vitest)
+npm run docker:build    # Build Docker sandbox image
 ```
 
 ### Important Notes
 
-- The agent uses `git format-patch` NOT `git diff` for delivery
-- Git commits in the container use "Minion Agent <minion@localhost>" as the author
-- The watchdog circuit breaker prevents runaway costs via iteration limits
-- Configuration is exclusively through environment variables (`.env` file support)
+- The agent uses `git format-patch` NOT `git diff` for delivery (supports multi-commit)
+- Git identity is pre-configured via container presets (default: "Minion Agent <minion@localhost>")
+- The sandbox agent must update `/minion-run/journal.md` at each phase — failure to do so is a task failure
+- Configuration: `~/.minion/.pi/models.json` (LLM), `~/.minion/config.json` (presets, sandbox settings)
+- Provider aliases allow region-specific endpoints without changing user config
