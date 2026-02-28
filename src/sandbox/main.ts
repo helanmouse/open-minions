@@ -1,11 +1,13 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import { getModel } from '@mariozechner/pi-ai';
 import { bashTool, editTool, readTool, writeTool } from './tools/coding.js';
+import { grepTool, findTool, lsTool } from './tools/search.js';
 import { createDeliverPatchTool } from './tools/deliver-patch.js';
 import { buildSandboxSystemPrompt } from './prompts.js';
 import { readFileSync, writeFileSync, readdirSync } from 'fs';
 import { seedJournal, readJournal } from './journal.js';
 import { resolveProvider } from '../llm/provider-aliases.js';
+import { ContextManager } from './context-manager.js';
 import { SANDBOX_PATHS, EXIT_SUCCESS, EXIT_CRASH, EXIT_NO_PATCHES } from '../types/shared.js';
 
 interface TaskContext {
@@ -64,12 +66,15 @@ async function main() {
   // Get Model object using getModel()
   const modelObj = getModel(resolved.piProvider as any, resolved.modelId as any);
 
-  // Use coding-agent tools + custom deliver_patch tool
+  // Use coding-agent tools + search tools + custom deliver_patch tool
   const tools: any[] = [
     bashTool,
     readTool,
     editTool,
     writeTool,
+    grepTool,
+    findTool,
+    lsTool,
     createDeliverPatchTool('/workspace'),
   ];
 
@@ -86,6 +91,15 @@ async function main() {
       model: modelObj,
       tools,
     },
+  });
+
+  // Create ContextManager
+  const contextWindow = parseInt(process.env.LLM_CONTEXT_WINDOW || '128000', 10);
+  const ctxManager = new ContextManager({
+    maxIterations: ctx.maxIterations,
+    contextWindow,
+    runDir: '/minion-run',
+    journalPath: SANDBOX_PATHS.JOURNAL,
   });
 
   // Subscribe to events for status tracking
@@ -107,6 +121,24 @@ async function main() {
     } catch (e) {
       // Never let logging crash the agent
     }
+
+    // Feed events to ContextManager
+    ctxManager.onEvent(event);
+
+    if (event.type === 'turn_end') {
+      if (ctxManager.shouldForceTerminate()) {
+        console.error('[sandbox] Force terminating — iteration limit + grace exceeded');
+        agent.abort();
+      } else if (ctxManager.shouldEnforceLimit()) {
+        console.error('[sandbox] Iteration limit reached, steering agent to deliver');
+        agent.steer({
+          role: 'user',
+          content: [{ type: 'text', text: ctxManager.getSteeringMessage() }],
+          timestamp: Date.now(),
+        } as any);
+      }
+    }
+
     if (event.type === 'turn_start' || event.type === 'tool_execution_start') {
       updateStatus(event);
     }
@@ -114,8 +146,53 @@ async function main() {
 
   // Execute task
   console.error('[sandbox] Calling agent.prompt()...');
-  await agent.prompt(ctx.description);
-  console.error(`[sandbox] agent.prompt() returned, error=${(agent as any)._state?.error || 'none'}`);
+
+  let taskDescription = ctx.description;
+  let done = false;
+  let retryCount = 0;
+
+  while (!done) {
+    try {
+      await agent.prompt(taskDescription);
+      done = true;
+    } catch (err: any) {
+      const errorMsg = String(err.message || err);
+      console.error(`[sandbox] Agent error: ${errorMsg}`);
+
+      // Check if context overflow — perform reset
+      if (errorMsg.includes('context') || errorMsg.includes('too long') || errorMsg.includes('token')) {
+        console.error('[sandbox] Context overflow detected, performing journal-based reset...');
+        const recovery = await ctxManager.performReset();
+        agent.clearMessages();
+        taskDescription = recovery;
+        retryCount = 0;
+        continue;
+      }
+
+      // Check if retryable error
+      const errorType = classifyError(errorMsg);
+      if (ctxManager.shouldRetry(errorType, retryCount)) {
+        const delay = ctxManager.getRetryDelay(retryCount);
+        console.error(`[sandbox] Retrying in ${delay}ms (attempt ${retryCount + 1})...`);
+        await new Promise(r => setTimeout(r, delay));
+        retryCount++;
+        continue;
+      }
+
+      // Non-retryable — rethrow
+      throw err;
+    }
+  }
+
+  console.error(`[sandbox] agent.prompt() returned, turns=${ctxManager.turns} tokens=${JSON.stringify(ctxManager.getTokenSummary())}`);
+}
+
+function classifyError(msg: string): string {
+  if (msg.includes('429') || msg.includes('rate')) return 'rate_limit';
+  if (msg.includes('500') || msg.includes('502') || msg.includes('503')) return 'server_error';
+  if (msg.includes('timeout')) return 'timeout';
+  if (msg.includes('overloaded')) return 'overloaded';
+  return 'unknown';
 }
 
 function updateStatus(event: any): void {
