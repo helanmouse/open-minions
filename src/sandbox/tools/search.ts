@@ -56,7 +56,7 @@ export const grepTool: AgentTool<typeof GrepSchema> = {
         cmd += ' --exclude-dir=.git --exclude-dir=node_modules';
       }
 
-      const { stdout } = await execAsync(cmd, { cwd: dir, maxBuffer: 10 * 1024 * 1024 });
+      const { stdout } = await execAsync(cmd, { cwd: dir, maxBuffer: 10 * 1024 * 1024, timeout: 15_000 });
       const lines = stdout.split('\n');
       if (lines.length > MAX_GREP_LINES) {
         const truncated = lines.slice(0, MAX_GREP_LINES).join('\n');
@@ -72,7 +72,7 @@ export const grepTool: AgentTool<typeof GrepSchema> = {
 
 // --- find ---
 const FindSchema = Type.Object({
-  pattern: Type.String({ description: 'Glob pattern for file discovery (e.g. "**/*.ts")' }),
+  pattern: Type.String({ description: 'Pattern to match files. Use "*.ts" for filename matching or "**/*.ts" for recursive matching.' }),
   path: Type.Optional(Type.String({ description: 'Start directory (default: current dir)' })),
 });
 
@@ -88,8 +88,23 @@ export const findTool: AgentTool<typeof FindSchema> = {
       const dir = resolve(params.path ?? '.');
       if (!existsSync(dir)) return textResult(`Error: Directory not found: ${dir}`);
 
-      const cmd = `find ${escapeShellArg(dir)} -not -path '*/.git/*' -not -path '*/.git' -not -path '*/node_modules/*' -not -path '*/node_modules' -name ${escapeShellArg(params.pattern)} -type f`;
-      const { stdout } = await execAsync(cmd, { maxBuffer: 10 * 1024 * 1024 });
+      let matchFlag: string;
+      let matchPattern: string;
+      if (params.pattern.startsWith('**/')) {
+        // Strip **/ prefix and use -name with the remainder
+        matchFlag = '-name';
+        matchPattern = params.pattern.slice(3);
+      } else if (params.pattern.includes('/')) {
+        // Pattern contains path separators, use -path
+        matchFlag = '-path';
+        matchPattern = params.pattern;
+      } else {
+        matchFlag = '-name';
+        matchPattern = params.pattern;
+      }
+
+      const cmd = `find ${escapeShellArg(dir)} -not -path '*/.git/*' -not -path '*/.git' -not -path '*/node_modules/*' -not -path '*/node_modules' ${matchFlag} ${escapeShellArg(matchPattern)} -type f`;
+      const { stdout } = await execAsync(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 15_000 });
       const files = stdout.trim().split('\n').filter(Boolean);
       if (files.length === 0) return textResult('(no files found)');
       if (files.length > MAX_FIND_RESULTS) {

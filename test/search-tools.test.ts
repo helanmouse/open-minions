@@ -89,6 +89,21 @@ describe('findTool', () => {
     const result = await findTool.execute('t9', { pattern: '*.ts', path: '/tmp/nonexistent-dir-xyz' });
     expect(getText(result)).toContain('Error');
   });
+
+  it('finds files in subdirectories with **/*.ts glob pattern', async () => {
+    const dir = makeTempDir();
+    mkdirSync(join(dir, 'src', 'utils'), { recursive: true });
+    writeFileSync(join(dir, 'root.ts'), '');
+    writeFileSync(join(dir, 'src', 'index.ts'), '');
+    writeFileSync(join(dir, 'src', 'utils', 'helper.ts'), '');
+    writeFileSync(join(dir, 'src', 'utils', 'data.js'), '');
+    const result = await findTool.execute('t14', { pattern: '**/*.ts', path: dir });
+    const text = getText(result);
+    expect(text).toContain('root.ts');
+    expect(text).toContain('index.ts');
+    expect(text).toContain('helper.ts');
+    expect(text).not.toContain('data.js');
+  });
 });
 
 describe('lsTool', () => {
