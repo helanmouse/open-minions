@@ -122,7 +122,8 @@ async function main() {
       // Never let logging crash the agent
     }
 
-    // Feed events to ContextManager
+    // IMPORTANT: onEvent must run before the turn_end checks below,
+    // because it increments turnCount which the checks read.
     ctxManager.onEvent(event);
 
     if (event.type === 'turn_end') {
@@ -160,7 +161,17 @@ async function main() {
       console.error(`[sandbox] Agent error: ${errorMsg}`);
 
       // Check if context overflow — perform reset
-      if (errorMsg.includes('context') || errorMsg.includes('too long') || errorMsg.includes('token')) {
+      const isContextOverflow =
+        errorMsg.includes('context_length_exceeded') ||
+        errorMsg.includes('context window') ||
+        errorMsg.includes('maximum context length') ||
+        errorMsg.includes('too many tokens') ||
+        (errorMsg.includes('too long') && errorMsg.includes('prompt'));
+      if (isContextOverflow) {
+        if (ctxManager.resets >= 3) {
+          console.error('[sandbox] Max context resets exceeded, aborting');
+          throw err;
+        }
         console.error('[sandbox] Context overflow detected, performing journal-based reset...');
         const recovery = await ctxManager.performReset();
         agent.clearMessages();
