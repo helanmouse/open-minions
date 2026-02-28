@@ -69,4 +69,8 @@ describe('journal', () => {
     const fresh = readFileSync(path, 'utf-8');
     expect(fresh).toContain('## Journal Entry 1');
   });
+
+  it('rotateJournal throws on missing file', () => {
+    expect(() => rotateJournal('/tmp/nonexistent-journal.md')).toThrow('Cannot rotate journal');
+  });
 });

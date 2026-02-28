@@ -1,5 +1,5 @@
 import { writeFileSync, readFileSync, existsSync, renameSync, readdirSync } from 'fs';
-import { dirname, join, basename } from 'path';
+import { dirname, join } from 'path';
 
 const TEMPLATE = `## Journal Entry 1
 
@@ -38,6 +38,9 @@ export function readJournal(path: string): string {
 }
 
 export function rotateJournal(path: string): string {
+  if (!existsSync(path)) {
+    throw new Error(`Cannot rotate journal: file not found at ${path}`);
+  }
   const dir = dirname(path);
   const files = readdirSync(dir);
   const pattern = /^journal-(\d{3})\.md$/;
@@ -48,6 +51,9 @@ export function rotateJournal(path: string): string {
       const n = parseInt(m[1], 10);
       if (n > max) max = n;
     }
+  }
+  if (max >= 999) {
+    throw new Error('Journal rotation limit reached (999)');
   }
   const next = String(max + 1).padStart(3, '0');
   const rotatedPath = join(dir, `journal-${next}.md`);
