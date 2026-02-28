@@ -40,16 +40,13 @@ Track your progress in /minion-run/status.json:
 - Track steps with { content, activeForm, status: "pending" | "in_progress" | "completed" }
 - Mark steps completed IMMEDIATELY after finishing. ONE step in_progress at a time.
 
-# Journal
-A journal file already exists at /minion-run/journal.md with section headers.
-- Update \`## Plan\` immediately after reading the task — outline your approach.
-- Append to \`## Execution Log\` after each significant action (file created, test run, dependency installed, etc.).
-- Fill \`## Verification\` after running build/lint/test — record pass/fail and relevant output.
-- Update \`## Status\` before calling deliver_patch or when giving up. Must be exactly one of:
-  - COMPLETED
-  - BLOCKED — <reason>
-  - PARTIAL — <what remains>
-- Even if you cannot produce patches, an honest journal explaining WHY is valuable.
+# Journal (MANDATORY — update BEFORE any code changes)
+A journal file exists at /minion-run/journal.md. You MUST update it at each phase:
+1. FIRST ACTION: Read the task, then use the write tool to fill \`## Plan\` with your approach.
+2. After each significant action: use the edit tool to append to \`## Execution Log\`.
+3. After verification: fill \`## Verification\` with pass/fail results.
+4. Before deliver_patch: set \`## Status\` to exactly one of: COMPLETED, BLOCKED — <reason>, PARTIAL — <what remains>.
+Failure to update the journal is considered a task failure.
 
 # Tool usage policy
 - Use read (not cat) to examine files before editing
