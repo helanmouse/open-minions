@@ -1,3 +1,14 @@
+export const EXIT_SUCCESS = 0;
+export const EXIT_CRASH = 1;
+export const EXIT_NO_PATCHES = 2;
+
+export const SANDBOX_PATHS = {
+  JOURNAL: '/minion-run/journal.md',
+  PATCHES: '/minion-run/patches',
+  STATUS: '/minion-run/status.json',
+  CONTEXT: '/minion-run/context.json',
+} as const;
+
 export const TaskStatus = [
   'queued', 'running', 'done', 'failed', 'needs_human',
 ] as const;
@@ -35,6 +46,7 @@ export interface TaskResult {
   commits: number;
   filesChanged: number;
   summary: string;
+  journal?: string;
 }
 
 // Written by Host Agent to context.json, read by Sandbox Agent

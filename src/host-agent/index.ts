@@ -1,9 +1,10 @@
 import { randomBytes } from 'crypto';
-import { mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import type { LLMAdapter } from '../llm/types.js';
 import type { Sandbox } from '../sandbox/types.js';
 import type { TaskContext, TaskRequest, SandboxStatus } from '../types/shared.js';
+import { EXIT_NO_PATCHES } from '../types/shared.js';
 import type { ProjectAnalysis } from '../types/host.js';
 import { TaskStore } from '../task/store.js';
 import { parseTaskDescription } from './task-parser.js';
@@ -128,6 +129,14 @@ export class HostAgent {
     return taskId;
   }
 
+  private readJournalFromRun(taskId: string): string {
+    try {
+      return readFileSync(join(this.minionHome, 'runs', taskId, 'journal.md'), 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+
   async run(taskId: string, opts: RunOptions = {}): Promise<void> {
     const task = this.store.get(taskId);
     if (!task) throw new Error(`Task ${taskId} not found`);
@@ -160,10 +169,20 @@ export class HostAgent {
       const { exitCode } = await handle.wait();
       if (exitCode === 0) {
         await this.harvest(taskId);
-      } else {
+      } else if (exitCode === EXIT_NO_PATCHES) {
+        const journal = this.readJournalFromRun(taskId);
+        const errorMsg = 'Agent exited without producing patches (exit code 2)';
         this.store.update(taskId, {
           status: 'failed',
-          error: `Container exited with code ${exitCode}`,
+          error: journal ? `${errorMsg}\n\nJournal:\n${journal}` : errorMsg,
+          finished_at: new Date().toISOString(),
+        });
+      } else {
+        const journal = this.readJournalFromRun(taskId);
+        const errorMsg = `Container exited with code ${exitCode}`;
+        this.store.update(taskId, {
+          status: 'failed',
+          error: journal ? `${errorMsg}\n\nJournal:\n${journal}` : errorMsg,
           finished_at: new Date().toISOString(),
         });
       }
@@ -184,6 +203,25 @@ export class HostAgent {
       summary = status.summary || '';
     } catch {}
 
+    const journal = this.readJournalFromRun(taskId);
+
+    // Defense-in-depth: check for .patch files before applying
+    let hasPatches = false;
+    try {
+      const files = readdirSync(patchDir);
+      hasPatches = files.some(f => f.endsWith('.patch'));
+    } catch {}
+
+    if (!hasPatches) {
+      const errorMsg = 'No patch files found after successful exit';
+      this.store.update(taskId, {
+        status: 'failed',
+        error: journal ? `${errorMsg}\n\nJournal:\n${journal}` : errorMsg,
+        finished_at: new Date().toISOString(),
+      });
+      return;
+    }
+
     const patchResult = applyPatches(task.workdir, patchDir);
 
     if (patchResult.success) {
@@ -198,13 +236,15 @@ export class HostAgent {
           commits: patchResult.commits,
           filesChanged: 0,
           summary,
+          journal,
         },
         finished_at: new Date().toISOString(),
       });
     } else {
+      const errorMsg = `Patch apply failed: ${patchResult.error}`;
       this.store.update(taskId, {
         status: 'failed',
-        error: `Patch apply failed: ${patchResult.error}`,
+        error: journal ? `${errorMsg}\n\nJournal:\n${journal}` : errorMsg,
         finished_at: new Date().toISOString(),
       });
     }

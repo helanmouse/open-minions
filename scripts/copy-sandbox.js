@@ -9,6 +9,7 @@ const runtimeDir = join(process.env.HOME, '.minion/pi-runtime');
 const files = [
   { src: 'main.js', dst: 'sandbox-main.js' },
   { src: 'prompts.js', dst: 'prompts.js' },
+  { src: 'journal.js', dst: 'journal.js' },
   { src: 'tools/deliver-patch.js', dst: 'tools/deliver-patch.js' },
 ];
 

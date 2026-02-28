@@ -3,7 +3,9 @@ import { getModel } from '@mariozechner/pi-ai';
 import { bashTool, editTool, readTool, writeTool } from '@mariozechner/coding-agent';
 import { createDeliverPatchTool } from './tools/deliver-patch.js';
 import { buildSandboxSystemPrompt } from './prompts.js';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, readdirSync } from 'fs';
+import { seedJournal, readJournal } from './journal.js';
+import { SANDBOX_PATHS, EXIT_SUCCESS, EXIT_CRASH, EXIT_NO_PATCHES } from '../types/shared.js';
 
 interface TaskContext {
   taskId: string;
@@ -66,6 +68,9 @@ async function main() {
     createDeliverPatchTool('/workspace'),
   ];
 
+  // Seed journal before agent creation
+  seedJournal(SANDBOX_PATHS.JOURNAL);
+
   // Build system prompt
   const systemPrompt = buildSandboxSystemPrompt(ctx);
 
@@ -103,7 +108,40 @@ function updateStatus(event: any): void {
   }
 }
 
-main().catch(err => {
-  console.error('[sandbox] Fatal error:', err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // Check for .patch files in the patches directory
+    let hasPatches = false;
+    try {
+      const files = readdirSync(SANDBOX_PATHS.PATCHES);
+      hasPatches = files.some(f => f.endsWith('.patch'));
+    } catch {}
+
+    if (!hasPatches) {
+      const journal = readJournal(SANDBOX_PATHS.JOURNAL);
+      console.error('[sandbox] No patches produced.');
+      if (journal) console.error('[sandbox] Journal:\n' + journal);
+      try {
+        writeFileSync(SANDBOX_PATHS.STATUS, JSON.stringify({
+          phase: 'failed',
+          error: 'Agent exited without producing patches',
+          journal,
+        }, null, 2));
+      } catch {}
+      process.exit(EXIT_NO_PATCHES);
+    }
+
+    process.exit(EXIT_SUCCESS);
+  })
+  .catch(err => {
+    console.error('[sandbox] Fatal error:', err);
+    const journal = readJournal(SANDBOX_PATHS.JOURNAL);
+    try {
+      writeFileSync(SANDBOX_PATHS.STATUS, JSON.stringify({
+        phase: 'failed',
+        error: String(err),
+        journal,
+      }, null, 2));
+    } catch {}
+    process.exit(EXIT_CRASH);
+  });
