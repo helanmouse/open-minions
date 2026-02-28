@@ -9,6 +9,7 @@ const runtimeDir = join(process.env.HOME, '.minion/pi-runtime');
 // Preserve dist/ directory structure so relative imports work inside the container
 const files = [
   { src: 'sandbox/main.js', dst: 'sandbox/main.js' },
+  { src: 'sandbox/presets.js', dst: 'sandbox/presets.js' },
   { src: 'sandbox/prompts.js', dst: 'sandbox/prompts.js' },
   { src: 'sandbox/journal.js', dst: 'sandbox/journal.js' },
   { src: 'sandbox/tools/deliver-patch.js', dst: 'sandbox/tools/deliver-patch.js' },

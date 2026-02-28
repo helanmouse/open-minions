@@ -57,6 +57,25 @@ prepare_workspace() {
   fi
 }
 
+# Configure git identity from preset env vars
+configure_git() {
+  # Source .env early so GIT_AUTHOR_* are available
+  if [ -f "$MINIONS_RUN/.env" ]; then
+    set -a
+    source "$MINIONS_RUN/.env"
+    set +a
+  fi
+
+  local name="${GIT_AUTHOR_NAME:-Minion Agent}"
+  local email="${GIT_AUTHOR_EMAIL:-minion@localhost}"
+  git config --global user.name "$name"
+  git config --global user.email "$email"
+  # GIT_COMMITTER_* follows GIT_AUTHOR_* if unset
+  export GIT_COMMITTER_NAME="$name"
+  export GIT_COMMITTER_EMAIL="$email"
+  log "Git config: $name <$email>"
+}
+
 # Start sandbox agent
 start_agent() {
   if [ -f "$MINIONS_RUN/.env" ]; then
@@ -85,6 +104,7 @@ main() {
   ensure_node
   verify_pi_runtime
   prepare_workspace
+  configure_git
   start_agent
 }
 

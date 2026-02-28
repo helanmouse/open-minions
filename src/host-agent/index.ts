@@ -11,6 +11,7 @@ import { parseTaskDescription } from './task-parser.js';
 import { prepareRepo, cleanupRepo } from './repo-preparer.js';
 import { applyPatches, pushRepo } from './patch-applier.js';
 import { MinionsConfig } from './config.js';
+import { resolvePresets } from '../sandbox/presets.js';
 
 export interface HostAgentOptions {
   llm: LLMAdapter;
@@ -121,11 +122,28 @@ export class HostAgent {
       }
     }
 
+    // Read user preset overrides from config.json
+    let userPresets: Record<string, string> = {};
+    if (this.config) {
+      try {
+        const raw = readFileSync(join(this.minionHome, 'config.json'), 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed.presets && typeof parsed.presets === 'object') {
+          userPresets = parsed.presets;
+        }
+      } catch {
+        // No config or no presets — use defaults
+      }
+    }
+    const presetEnv = resolvePresets(userPresets);
+    const presetLines = Object.entries(presetEnv).map(([k, v]) => `${k}=${v}`);
+
     writeFileSync(join(runDir, '.env'), [
       `LLM_PROVIDER=${llmProvider}`,
       `LLM_MODEL=${llmModel}`,
       `LLM_API_KEY=${llmApiKey}`,
       `LLM_BASE_URL=${llmBaseUrl}`,
+      ...presetLines,
     ].join('\n'));
 
     return taskId;
