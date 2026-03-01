@@ -55,11 +55,13 @@ export class TuiSetup {
       // Interactive mode using TUI
       const provider = await this.selectProvider();
       const sourceResult = await this.selectSource(provider);
-      const model = await this.selectModel(provider);
-      const apiKey = await this.selectApiKey(provider);
+      // Use actualProvider if specified, otherwise use the selected provider
+      const actualProvider = sourceResult.actualProvider || provider;
+      const model = await this.selectModel(actualProvider);
+      const apiKey = await this.selectApiKey(actualProvider);
 
       config = {
-        provider,
+        provider: actualProvider,
         source: sourceResult.sourceId,
         model,
         apiKey,
@@ -83,7 +85,11 @@ export class TuiSetup {
    */
   async selectProvider(): Promise<string> {
     const providers = getProviders();
-    const items: SelectItem[] = providers.map((p) => ({
+    // Filter out providers that are handled as sources of other providers
+    const hiddenProviders = ['minimax-cn'];
+    const filteredProviders = providers.filter(p => !hiddenProviders.includes(p));
+
+    const items: SelectItem[] = filteredProviders.map((p) => ({
       value: p,
       label: this.formatProviderLabel(p),
       description: this.getProviderDescription(p),

@@ -14,6 +14,8 @@ export interface Source {
   isCustom: boolean;
   /** API type to use (openai-completions, anthropic-messages, etc.) */
   apiType?: 'openai-completions' | 'anthropic-messages' | 'openai-responses' | 'google-generative-ai' | string;
+  /** Actual provider ID to use (if different from parent provider) */
+  actualProvider?: string;
 }
 
 export interface ProviderSources {
@@ -217,23 +219,12 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
         apiType: 'anthropic-messages'
       },
       {
-        id: 'custom',
-        name: '自定义 API 地址',
-        url: '',
-        isCustom: true
-      },
-    ],
-  },
-  'minimax-cn': {
-    provider: 'minimax-cn',
-    displayName: 'MiniMax 中国',
-    sources: [
-      {
         id: 'cn',
         name: '中国源 (Anthropic 兼容)',
         url: 'https://api.minimaxi.com/anthropic',
         isCustom: false,
-        apiType: 'anthropic-messages'
+        apiType: 'anthropic-messages',
+        actualProvider: 'minimax-cn'
       },
       {
         id: 'custom',

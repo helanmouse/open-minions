@@ -31,4 +31,5 @@ export interface SourceSelectionResult {
   sourceId: string;  // Maps to SetupConfig.source
   baseUrl: string;   // API base URL for the selected source
   apiType?: string;  // API type (e.g., 'openai-completions', 'anthropic-messages')
+  actualProvider?: string;  // Actual provider ID to use (if different from selected provider)
 }

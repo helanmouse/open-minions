@@ -59,7 +59,8 @@ export class SourceSelector {
             resolve({
               sourceId: selectedSource.id,
               baseUrl: customUrl,
-              apiType: selectedSource.apiType
+              apiType: selectedSource.apiType,
+              actualProvider: selectedSource.actualProvider
             });
           } catch (error) {
             // User cancelled custom URL input - propagate cancellation
@@ -73,7 +74,8 @@ export class SourceSelector {
           resolve({
             sourceId: selectedSource.id,
             baseUrl: selectedSource.url,
-            apiType: selectedSource.apiType
+            apiType: selectedSource.apiType,
+            actualProvider: selectedSource.actualProvider
           });
         }
       };
