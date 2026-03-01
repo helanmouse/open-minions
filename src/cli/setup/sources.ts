@@ -42,9 +42,17 @@ export const DISPLAY_PROVIDERS = [
   'deepseek',
   'xai',
   'groq',
+  'mistral',
   'kimi-coding',
   'minimax',
   'qwen',
+  'openrouter',
+  'amazon-bedrock',
+  'azure-openai-responses',
+  'google-vertex',
+  'vercel-ai-gateway',
+  'cerebras',
+  'huggingface',
 ] as const;
 
 /**
@@ -281,6 +289,158 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
         url: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
         isCustom: false,
         apiType: 'anthropic-messages'
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  openrouter: {
+    provider: 'openrouter',
+    displayName: 'OpenRouter',
+    description: '第三方 LLM 聚合服务',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  mistral: {
+    provider: 'mistral',
+    displayName: 'Mistral AI',
+    description: 'Mistral Large, Mistral Small',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  'amazon-bedrock': {
+    provider: 'amazon-bedrock',
+    displayName: 'AWS Bedrock',
+    description: 'Amazon Bedrock 托管服务',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  'azure-openai-responses': {
+    provider: 'azure-openai-responses',
+    displayName: 'Azure OpenAI',
+    description: 'Microsoft Azure OpenAI 服务',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  'google-vertex': {
+    provider: 'google-vertex',
+    displayName: 'Google Vertex AI',
+    description: 'Google Cloud Vertex AI',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  'vercel-ai-gateway': {
+    provider: 'vercel-ai-gateway',
+    displayName: 'Vercel AI Gateway',
+    description: 'Vercel AI 网关服务',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  cerebras: {
+    provider: 'cerebras',
+    displayName: 'Cerebras',
+    description: 'Cerebras 推理服务',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  huggingface: {
+    provider: 'huggingface',
+    displayName: 'HuggingFace',
+    description: 'HuggingFace 推理 API',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
       },
       {
         id: 'custom',
