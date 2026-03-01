@@ -2,10 +2,10 @@
 
 export interface SetupConfig {
   provider: string;
-  source?: string;      // NEW: source ID
   model: string;
   apiKey: string;
-  customUrl?: string;   // NEW: custom URL if source is 'custom'
+  source?: string;      // Source ID for selecting different API sources
+  customUrl?: string;   // Custom URL when source is 'custom'
 }
 
 export interface SetupResult {
@@ -25,8 +25,8 @@ export interface ModelInfo {
   description?: string;
 }
 
-// NEW: Source selection result
+/** Result of source selection containing source ID and base URL */
 export interface SourceSelectionResult {
-  sourceId: string;
-  baseUrl: string;
+  sourceId: string;  // Maps to SetupConfig.source
+  baseUrl: string;   // API base URL for the selected source
 }
