@@ -30,33 +30,35 @@ export class MinionsConfig {
   }
 
   async getModel(): Promise<Model<Api>> {
-    // Load config from .pi/models.json if it exists, otherwise use env vars
     const modelsJson = join(this.agentDir, '.pi', 'models.json');
+    const configJson = join(this.agentDir, '.pi', 'config.json');
+
     let provider = process.env.LLM_PROVIDER || 'openai';
+    let sourceId: string | undefined;
     let model = process.env.LLM_MODEL || 'gpt-4o';
     let userBaseUrl = '';
 
     try {
-      const content = JSON.parse(readFileSync(modelsJson, 'utf-8'));
-      // Get default provider and model from pi-mono config
-      const providers = Object.keys(content.providers || {});
-      if (providers.length > 0) {
-        provider = providers[0];
-        const providerConfig = content.providers[provider];
-        // Preserve user-configured baseUrl (user override > alias default > pi-ai default)
-        if (providerConfig.baseUrl) {
-          userBaseUrl = providerConfig.baseUrl;
-        }
-        const models = providerConfig.models || [];
-        if (models.length > 0) {
-          model = models[0].id;
-        }
+      // 1. Read config.json FIRST for current selection
+      const config = JSON.parse(readFileSync(configJson, 'utf-8'));
+      if (config.provider) provider = config.provider;
+      if (config.source) sourceId = config.source;
+      if (config.model) model = config.model;
+
+      // 2. Read models.json for provider configuration
+      const models = JSON.parse(readFileSync(modelsJson, 'utf-8'));
+      const providerConfig = models.providers[provider];
+
+      if (providerConfig) {
+        // 3. Get baseUrl from selected source
+        const baseUrl = sourceId && providerConfig.sources?.[sourceId]?.baseUrl;
+        userBaseUrl = baseUrl || providerConfig.baseUrl || '';
       }
     } catch {
       // Fall back to env vars
     }
 
-    // Resolve alias: e.g. zhipu → zai with CN baseUrl
+    // 4. Resolve provider and get model
     const resolved = resolveProvider(provider, model, userBaseUrl);
     const modelObj = getModel(resolved.piProvider as any, resolved.modelId as any);
     if (resolved.baseUrl) {
@@ -105,30 +107,26 @@ export class MinionsConfig {
   }
 
   /**
-   * Return the raw user-configured provider and model names (before alias resolution).
+   * Return the raw user-configured provider, model, and source names (before alias resolution).
    * Used by HostAgent to write .env so sandbox can resolve aliases itself.
    */
-  getRawProviderConfig(): { provider: string; model: string } {
-    const modelsJson = join(this.agentDir, '.pi', 'models.json');
+  getRawProviderConfig(): { provider: string; model: string; source?: string } {
+    const configJson = join(this.agentDir, '.pi', 'config.json');
     let provider = process.env.LLM_PROVIDER || 'openai';
+    let sourceId: string | undefined;
     let model = process.env.LLM_MODEL || 'gpt-4o';
 
     try {
-      const content = JSON.parse(readFileSync(modelsJson, 'utf-8'));
-      const providers = Object.keys(content.providers || {});
-      if (providers.length > 0) {
-        provider = providers[0];
-        const providerConfig = content.providers[provider];
-        const models = providerConfig.models || [];
-        if (models.length > 0) {
-          model = models[0].id;
-        }
-      }
+      // Read config.json for current selection
+      const config = JSON.parse(readFileSync(configJson, 'utf-8'));
+      if (config.provider) provider = config.provider;
+      if (config.source) sourceId = config.source;
+      if (config.model) model = config.model;
     } catch {
       // Fall back to env vars
     }
 
-    return { provider, model };
+    return { provider, model, source: sourceId };
   }
 
   getLLMConfig(): LLMConfig {
