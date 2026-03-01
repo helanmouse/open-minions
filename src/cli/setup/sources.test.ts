@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PROVIDER_SOURCES } from '../../../src/cli/setup/sources.js';
+import { PROVIDER_SOURCES } from './sources.js';
 
 describe('ProviderSources', () => {
   it('should have zai provider with 3 sources', () => {
