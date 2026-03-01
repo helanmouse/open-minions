@@ -1,0 +1,7 @@
+{
+  "name": "go-concurrency",
+  "difficulty": "medium",
+  "language": "go",
+  "taskType": "bugfix",
+  "tags": ["go", "concurrency", "race-condition"]
+}
