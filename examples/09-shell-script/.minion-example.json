@@ -1,0 +1,7 @@
+{
+  "name": "shell-script",
+  "difficulty": "easy",
+  "language": "shell",
+  "taskType": "bugfix",
+  "tags": ["shell", "quoting", "paths"]
+}

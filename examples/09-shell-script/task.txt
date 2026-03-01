@@ -1,0 +1,1 @@
+deploy.sh fails when directory paths contain spaces. Fix the script.
