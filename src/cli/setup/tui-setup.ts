@@ -318,14 +318,13 @@ export class TuiSetup {
 
     // Add source configuration if sourceId is specified
     if (config.source) {
-      if (!existingModels.sources) {
-        existingModels.sources = {};
-      }
-      if (!existingModels.sources[config.provider]) {
-        existingModels.sources[config.provider] = {};
-      }
-      existingModels.sources[config.provider][config.source] = baseUrl;
-      existingModels.currentSource = config.source;
+      providerConfig.sources = {
+        [config.source]: {
+          baseUrl,
+          apiKey: `$${envVarName}`,
+        },
+      };
+      providerConfig.currentSource = config.source;
     }
 
     // Add or update the provider configuration
