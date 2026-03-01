@@ -116,7 +116,8 @@ export class TuiSetup {
    */
   async selectModel(provider: string): Promise<string> {
     const models = getModels(provider as any);
-    const items: SelectItem[] = models.map((m) => ({
+    // Reverse the order to show newest models first
+    const items: SelectItem[] = models.reverse().map((m) => ({
       value: m.id,
       label: m.name,
       description: m.reasoning ? 'Reasoning model' : 'Standard model',
