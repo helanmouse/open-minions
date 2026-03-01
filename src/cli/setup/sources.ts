@@ -58,7 +58,7 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       {
         id: 'intl-anthropic',
         name: '国际源 (Anthropic 兼容)',
-        url: 'https://api.z.ai/api/coding/anthropic',
+        url: 'https://api.z.ai/api/anthropic',
         isCustom: false,
         apiType: 'anthropic-messages'
       },
@@ -186,14 +186,14 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       {
         id: 'global',
         name: '国际源 (Anthropic 兼容)',
-        url: 'https://api.kimi.com/coding',
+        url: 'https://api.moonshot.ai/anthropic',
         isCustom: false,
         apiType: 'anthropic-messages'
       },
       {
         id: 'cn',
         name: '中国源 (Anthropic 兼容)',
-        url: 'https://api.moonshot.cn/coding',
+        url: 'https://api.moonshot.cn/anthropic',
         isCustom: false,
         apiType: 'anthropic-messages'
       },
@@ -243,7 +243,7 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       },
     ],
   },
-  // Note: Qwen (Alibaba) uses openai-completions with custom baseUrl
+  // Note: Qwen (Alibaba) uses anthropic-messages with custom baseUrl
   // We use 'openai' as the base provider with custom baseUrl
   'qwen': {
     provider: 'openai',  // Use OpenAI-compatible API
@@ -251,17 +251,17 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     sources: [
       {
         id: 'global',
-        name: '国际源 (OpenAI 兼容)',
+        name: '国际源 (Anthropic 兼容)',
         url: 'https://coding-intl.dashscope.aliyuncs.com/apps/anthropic',
         isCustom: false,
-        apiType: 'openai-completions'
+        apiType: 'anthropic-messages'
       },
       {
         id: 'cn',
-        name: '中国源 (OpenAI 兼容)',
+        name: '中国源 (Anthropic 兼容)',
         url: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
         isCustom: false,
-        apiType: 'openai-completions'
+        apiType: 'anthropic-messages'
       },
       {
         id: 'custom',
