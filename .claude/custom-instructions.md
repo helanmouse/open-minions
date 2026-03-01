@@ -33,6 +33,8 @@ Always keep in mind the dual-agent pattern:
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | CLI Entry | `src/cli/index.ts` | Commander.js CLI interface |
+| CLI Setup | `src/cli/setup/tui-setup.ts` | Interactive TUI setup workflow |
+| Setup Sources | `src/cli/setup/sources.ts` | Provider sources configuration (18 providers) |
 | Host Agent | `src/host-agent/index.ts` | Main host orchestration |
 | Host Config | `src/host-agent/config.ts` | Config loading (~/.minion/) |
 | Sandbox Agent | `src/sandbox/main.ts` | Container entry point |
@@ -92,6 +94,25 @@ The preset system (`src/sandbox/presets.ts`) provides configurable container par
   ```
 - Host agent writes presets to `.env`, `bootstrap.sh` applies git config
 
+### Interactive Setup System
+
+The setup system (`src/cli/setup/`) provides a TUI-based configuration workflow:
+- **Provider Selection**: 18 curated providers defined in `DISPLAY_PROVIDERS` constant
+- **Source Selection**: Multi-region support (e.g., China/International sources for Zhipu AI, Kimi, MiniMax, Qwen)
+- **Model Selection**: Models displayed in reverse order (newest first)
+- **API Key Input**: TUI-based input with masked display for security
+- **Provider Unification**: Some providers (e.g., MiniMax) use `actualProvider` field to map sources to different backend providers
+- Configuration saved to `~/.minion/.pi/models.json` and `~/.minion/.pi/config.json`
+
+### Dense Journal System
+
+The journal system (`src/sandbox/journal.ts`) provides mandatory execution tracking:
+- **Template**: Structured format with State, Key Decisions, Current Progress, Remaining Work, Errors & Blockers
+- **Rotation**: When journal grows too large, `rotateJournal()` archives to `journal-001.md`, `journal-002.md`, etc.
+- **Mandatory Updates**: Sandbox agent must update journal at each phase — failure to do so is a task failure
+- **Location**: `/minion-run/journal.md` in container
+- **Purpose**: Better failure diagnostics and context management
+
 ### Adding New Sandbox Tools
 
 1. Create or edit in `src/sandbox/tools/`
@@ -99,12 +120,17 @@ The preset system (`src/sandbox/presets.ts`) provides configurable container par
 3. Register in `src/sandbox/main.ts` tools array
 4. Add compiled `.js` to `scripts/copy-sandbox.js` if it's a new file
 
-### Adding LLM Provider Aliases
+### Adding LLM Providers to Setup
 
-To add a provider alias (e.g. regional endpoint):
-1. Edit `src/llm/provider-aliases.ts`
-2. Add entry to the `PROVIDER_ALIASES` map
-3. The alias resolves to a pi-ai provider + baseUrl at runtime
+To add a new provider to the setup UI:
+1. Add provider ID to `DISPLAY_PROVIDERS` array in `src/cli/setup/sources.ts`
+2. Add provider configuration to `PROVIDER_SOURCES` object with:
+   - `provider`: pi-ai provider ID
+   - `displayName`: Human-readable name
+   - `description`: Brief description for UI
+   - `sources`: Array of source configurations (official, regional, custom)
+3. For multi-region providers, use `actualProvider` field in source to map to different backend provider
+4. Example: MiniMax uses `actualProvider: 'minimax-cn'` for China source
 
 ### Project Status
 
@@ -128,5 +154,7 @@ npm run docker:build    # Build Docker sandbox image
 - The agent uses `git format-patch` NOT `git diff` for delivery (supports multi-commit)
 - Git identity is pre-configured via container presets (default: "Minion Agent <minion@localhost>")
 - The sandbox agent must update `/minion-run/journal.md` at each phase — failure to do so is a task failure
-- Configuration: `~/.minion/.pi/models.json` (LLM), `~/.minion/config.json` (presets, sandbox settings)
-- Provider aliases allow region-specific endpoints without changing user config
+- Journal rotation: When journal grows large, it's archived to `journal-001.md`, `journal-002.md`, etc.
+- Configuration: `~/.minion/.pi/models.json` (LLM), `~/.minion/.pi/config.json` (current selection), `~/.minion/config.json` (presets, sandbox settings)
+- Setup UI: 18 curated providers with multi-region source selection
+- Provider unification: Some providers (e.g., MiniMax) map different sources to different backend providers via `actualProvider` field

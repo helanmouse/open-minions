@@ -64,10 +64,11 @@ User: "Fix login page crash when email is empty"
 - **Docker Sandbox Isolation** — All code execution happens in a secure container
 - **Offline Runtime** — pi-runtime pre-built on host, mounted to containers
 - **Patch-Based Delivery** — Results via `git format-patch` → `git am`
-- **Multiple LLM Providers** — 25 supported providers including OpenAI, Anthropic, Google, DeepSeek, Zhipu, and more
-- **Interactive TUI Setup** — Terminal-based UI for easy configuration with keyboard navigation
+- **Multiple LLM Providers** — 18 supported providers including OpenAI, Anthropic, Google, DeepSeek, Zhipu AI, xAI, Groq, Mistral AI, Kimi, MiniMax, Qwen, OpenRouter, AWS Bedrock, Azure OpenAI, Google Vertex AI, Vercel AI Gateway, Cerebras, and HuggingFace
+- **Interactive TUI Setup** — Terminal-based UI for easy configuration with keyboard navigation, source selection, and API key management
+- **Multi-Region Support** — Select regional API endpoints (e.g., China/International sources) for providers like Zhipu AI, Kimi, MiniMax, and Qwen
 - **Container Presets** — Pre-configured git identity, timezone, locale (customizable)
-- **Agent Journal** — Mandatory execution journal for better failure diagnostics
+- **Dense Journal System** — Mandatory execution journal with automatic rotation for context management
 - **Provider Aliases** — Multi-region API endpoints via alias mechanism
 
 ### Quick Start
@@ -103,10 +104,11 @@ minion setup
 ```
 
 This launches an interactive Terminal UI (TUI) for configuration:
-- Use arrow keys to navigate between providers and models
-- Press Enter to select a provider/model
-- Press Escape to go back
-- The TUI supports 25 LLM providers out of the box
+- **Provider Selection**: Choose from 18 LLM providers (OpenAI, Anthropic, Google, DeepSeek, Zhipu AI, xAI, Groq, Mistral AI, Kimi, MiniMax, Qwen, OpenRouter, AWS Bedrock, Azure OpenAI, Google Vertex AI, Vercel AI Gateway, Cerebras, HuggingFace)
+- **Source Selection**: For providers with multiple regions (e.g., Zhipu AI, Kimi, MiniMax, Qwen), select between international and China sources
+- **Model Selection**: Browse available models (newest models shown first)
+- **API Key Input**: Enter or confirm API key with masked display for security
+- Use arrow keys to navigate, Enter to select, Ctrl+C to cancel
 
 Or manually configure with environment variables:
 
