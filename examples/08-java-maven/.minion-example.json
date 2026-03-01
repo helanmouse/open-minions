@@ -1,0 +1,7 @@
+{
+  "name": "java-maven",
+  "difficulty": "medium",
+  "language": "java",
+  "taskType": "feature",
+  "tags": ["java", "maven", "junit"]
+}

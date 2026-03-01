@@ -1,0 +1,1 @@
+Add isPalindrome(String) to StringUtils. Case-insensitive, ignore spaces. Pass 'mvn test'.

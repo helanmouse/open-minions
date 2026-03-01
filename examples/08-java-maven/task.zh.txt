@@ -1,0 +1,1 @@
+给 StringUtils 添加 isPalindrome 方法，忽略大小写和空格。通过 mvn test。
