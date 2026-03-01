@@ -1,0 +1,1 @@
+给 LinkedList 添加 sort() 方法，按升序排列节点。通过 make test。
