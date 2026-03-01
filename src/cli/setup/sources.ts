@@ -160,6 +160,66 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       },
     ],
   },
+  'kimi-coding': {
+    provider: 'kimi-coding',
+    displayName: 'Kimi (Moonshot)',
+    sources: [
+      {
+        id: 'official-global',
+        name: '官方国际源',
+        url: 'https://api.moonshot.ai/v1',
+        isCustom: false
+      },
+      {
+        id: 'official-cn',
+        name: '官方中国源',
+        url: 'https://api.moonshot.cn/v1',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  minimax: {
+    provider: 'minimax',
+    displayName: 'MiniMax',
+    sources: [
+      {
+        id: 'official',
+        name: '官方国际源',
+        url: 'https://api.minimax.io/v1',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  'minimax-cn': {
+    provider: 'minimax-cn',
+    displayName: 'MiniMax 中国',
+    sources: [
+      {
+        id: 'official',
+        name: '官方中国源',
+        url: 'https://api.minimaxi.com/v1',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
 };
 
 /**
