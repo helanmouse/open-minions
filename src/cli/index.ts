@@ -171,7 +171,8 @@ program
     const setup = new TuiSetup(minionHome);
 
     // Use TUI if we have a TTY, otherwise fallback to readline
-    const isTTY = process.stdin.isTTY && process.stdout.isTTY;
+    // Explicitly check for true to handle undefined case
+    const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
 
     if (!isTTY) {
       // Non-interactive: use readline prompts
@@ -248,10 +249,6 @@ program
     }
   });
 
-// Run CLI when executed directly
-const isMain = process.argv[1]?.endsWith('cli/index.ts')
-  || process.argv[1]?.endsWith('cli/index.js');
-
-if (isMain) {
-  program.parse();
-}
+// Run CLI - always parse when this file is executed
+// This handles direct execution, symlinked execution, and npm link
+program.parse();
