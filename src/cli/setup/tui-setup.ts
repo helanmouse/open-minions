@@ -7,6 +7,8 @@ import { TUI, SelectList, Container, TextComponent, ProcessTerminal } from '@mar
 import { getProviders, getModels } from '@mariozechner/pi-ai';
 import type { SelectItem } from '@mariozechner/pi-tui';
 import type { SetupConfig, SetupResult } from './types.js';
+import { getProviderSources, type ProviderSources } from './sources.js';
+import { SourceSelector } from './source-selector.js';
 
 /**
  * TuiSetup - Main class for TUI-based setup workflow
@@ -52,10 +54,17 @@ export class TuiSetup {
     } else {
       // Interactive mode using TUI
       const provider = await this.selectProvider();
+      const sourceResult = await this.selectSource(provider);
       const model = await this.selectModel(provider);
       const apiKey = await this.selectApiKey(provider);
 
-      config = { provider, model, apiKey };
+      config = {
+        provider,
+        source: sourceResult.sourceId,
+        model,
+        apiKey,
+        customUrl: sourceResult.baseUrl || undefined
+      };
     }
 
     // Save the configuration
@@ -80,6 +89,23 @@ export class TuiSetup {
     }));
 
     return this.runSelectList('Select a Provider', items);
+  }
+
+  /**
+   * Select a source for the given provider
+   * @param provider - The provider to select a source for
+   * @returns Promise containing sourceId and baseUrl
+   */
+  async selectSource(provider: string): Promise<{ sourceId: string; baseUrl: string }> {
+    const providerSources = getProviderSources(provider);
+
+    if (!providerSources) {
+      // Provider doesn't have multi-source config, use default
+      return { sourceId: 'official', baseUrl: '' };
+    }
+
+    const selector = new SourceSelector();
+    return selector.selectSource(providerSources);
   }
 
   /**
@@ -263,9 +289,18 @@ export class TuiSetup {
     // Get the environment variable name for API key
     const envVarName = this.getEnvVarName(config.provider);
 
-    // Add or update the provider configuration
-    existingModels.providers[config.provider] = {
-      baseUrl: this.getBaseUrl(config.provider),
+    // Determine base URL: prefer customUrl, fall back to source-based URL, then default
+    let baseUrl = config.customUrl;
+    if (!baseUrl && config.source) {
+      baseUrl = this.getBaseUrlForSource(config.provider, config.source);
+    }
+    if (!baseUrl) {
+      baseUrl = this.getBaseUrl(config.provider) || '';
+    }
+
+    // Build provider configuration
+    const providerConfig: any = {
+      baseUrl,
       apiKey: `$${envVarName}`,
       api: 'openai-completions',
       models: [
@@ -280,6 +315,21 @@ export class TuiSetup {
         },
       ],
     };
+
+    // Add source configuration if sourceId is specified
+    if (config.source) {
+      if (!existingModels.sources) {
+        existingModels.sources = {};
+      }
+      if (!existingModels.sources[config.provider]) {
+        existingModels.sources[config.provider] = {};
+      }
+      existingModels.sources[config.provider][config.source] = baseUrl;
+      existingModels.currentSource = config.source;
+    }
+
+    // Add or update the provider configuration
+    existingModels.providers[config.provider] = providerConfig;
 
     await writeFile(modelsJsonPath, JSON.stringify(existingModels, null, 2));
   }
@@ -304,6 +354,9 @@ export class TuiSetup {
     // Update current selection (don't save API key directly)
     existingConfig.provider = config.provider;
     existingConfig.model = config.model;
+    if (config.source) {
+      existingConfig.source = config.source;
+    }
 
     await writeFile(configJsonPath, JSON.stringify(existingConfig, null, 2));
   }
@@ -319,6 +372,20 @@ export class TuiSetup {
       zai: 'https://open.bigmodel.cn/api/paas/v4',
     };
     return baseUrls[provider];
+  }
+
+  /**
+   * Get the base URL for a specific source of a provider
+   * @param provider - The provider identifier
+   * @param sourceId - The source identifier
+   * @returns The base URL for the source, or empty string if not found
+   */
+  private getBaseUrlForSource(provider: string, sourceId: string): string {
+    const providerSources = getProviderSources(provider);
+    if (!providerSources) return '';
+
+    const source = providerSources.sources.find(s => s.id === sourceId);
+    return source?.url || '';
   }
 
   /**
