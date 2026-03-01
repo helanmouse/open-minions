@@ -37,6 +37,7 @@ export class MinionsConfig {
     let sourceId: string | undefined;
     let model = process.env.LLM_MODEL || 'gpt-4o';
     let userBaseUrl = '';
+    let userApiType: string | undefined;
 
     try {
       // 1. Read config.json FIRST for current selection
@@ -44,6 +45,7 @@ export class MinionsConfig {
       if (config.provider) provider = config.provider;
       if (config.source) sourceId = config.source;
       if (config.model) model = config.model;
+      if (config.apiType) userApiType = config.apiType;
 
       // 2. Read models.json for provider configuration
       const models = JSON.parse(readFileSync(modelsJson, 'utf-8'));
@@ -53,16 +55,29 @@ export class MinionsConfig {
         // 3. Get baseUrl from selected source
         const baseUrl = sourceId && providerConfig.sources?.[sourceId]?.baseUrl;
         userBaseUrl = baseUrl || providerConfig.baseUrl || '';
+
+        // 4. Get apiType from source config if not already set
+        if (!userApiType && sourceId && providerConfig.sources?.[sourceId]?.apiType) {
+          userApiType = providerConfig.sources[sourceId].apiType;
+        }
+        // Also check provider-level apiType
+        if (!userApiType && providerConfig.api) {
+          userApiType = providerConfig.api;
+        }
       }
     } catch {
       // Fall back to env vars
     }
 
-    // 4. Resolve provider and get model
+    // 5. Resolve provider and get model
     const resolved = resolveProvider(provider, model, userBaseUrl);
     const modelObj = getModel(resolved.piProvider as any, resolved.modelId as any);
     if (resolved.baseUrl) {
       (modelObj as any).baseUrl = resolved.baseUrl;
+    }
+    // 6. Override api type if specified
+    if (userApiType) {
+      (modelObj as any).api = userApiType;
     }
     return modelObj;
   }
@@ -136,14 +151,15 @@ export class MinionsConfig {
   }
 
   /**
-   * Return the raw user-configured provider, model, and source names (before alias resolution).
+   * Return the raw user-configured provider, model, source, and apiType names (before alias resolution).
    * Used by HostAgent to write .env so sandbox can resolve aliases itself.
    */
-  getRawProviderConfig(): { provider: string; model: string; source?: string } {
+  getRawProviderConfig(): { provider: string; model: string; source?: string; apiType?: string } {
     const configJson = join(this.agentDir, '.pi', 'config.json');
     let provider = process.env.LLM_PROVIDER || 'openai';
     let sourceId: string | undefined;
     let model = process.env.LLM_MODEL || 'gpt-4o';
+    let apiType: string | undefined;
 
     try {
       // Read config.json for current selection
@@ -151,11 +167,12 @@ export class MinionsConfig {
       if (config.provider) provider = config.provider;
       if (config.source) sourceId = config.source;
       if (config.model) model = config.model;
+      if (config.apiType) apiType = config.apiType;
     } catch {
       // Fall back to env vars
     }
 
-    return { provider, model, source: sourceId };
+    return { provider, model, source: sourceId, apiType };
   }
 
   getLLMConfig(): LLMConfig {
