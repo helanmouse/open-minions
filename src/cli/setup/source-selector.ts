@@ -3,7 +3,7 @@
  * Handles provider source selection with custom URL input support
  */
 
-import { TUI, SelectList, Container, TextComponent, InputText, ProcessTerminal } from '@mariozechner/pi-tui';
+import { TUI, SelectList, Container, TextComponent, TextEditor, ProcessTerminal } from '@mariozechner/pi-tui';
 import type { SelectItem } from '@mariozechner/pi-tui';
 import type { ProviderSources, Source } from './sources.js';
 import { validateCustomUrl, type ValidationResult } from './url-validator.js';
@@ -103,34 +103,30 @@ export class SourceSelector {
         { bottom: 1, top: 0 }
       ));
       this.container.addChild(new TextComponent(
-        'Press Enter to confirm, Esc to cancel',
+        'Press Ctrl+C to cancel, Enter when done',
         { bottom: 0, top: 1 }
       ));
 
-      // Create input field
-      const input = new InputText(60);
-      input.setPlaceholder('https://');
+      // Create text editor for input
+      const editor = new TextEditor();
+      editor.setText('https://');
 
-      input.onSubmit = () => {
-        const url = input.getValue();
+      editor.onSubmit = () => {
+        const url = editor.getText();
         const validation = validateCustomUrl(url);
 
         if (!validation.valid) {
           // Show error and keep input
           console.error(`\nError: ${validation.error}`);
-          console.error('Press Esc to cancel or enter a valid URL');
+          console.error('Press Ctrl+C to cancel or enter a valid URL');
           return;
         }
 
         resolve(url);
       };
 
-      input.onCancel = () => {
-        reject(new Error('Custom URL input cancelled'));
-      };
-
-      this.container.addChild(input);
-      this.ui.setFocus(input);
+      this.container.addChild(editor);
+      this.ui.setFocus(editor);
     });
   }
 
