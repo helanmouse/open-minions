@@ -212,6 +212,12 @@ program
         console.log(`\n✓ Configuration saved to ${minionHome}/.pi/`);
         console.log(`  Provider: ${result.config.provider}`);
         console.log(`  Model: ${result.config.model}`);
+
+        // Ensure stdin is paused to allow process to exit
+        // TUI may have left stdin in resumed state
+        if (process.stdin.isPaused && !process.stdin.isPaused()) {
+          process.stdin.pause();
+        }
       } catch (error: any) {
         if (error.message !== 'Cancelled by user') {
           console.error(`Setup failed: ${error.message}`);
