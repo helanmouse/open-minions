@@ -1,0 +1,7 @@
+{
+  "name": "react-component",
+  "difficulty": "hard",
+  "language": "typescript",
+  "taskType": "feature",
+  "tags": ["react", "dnd-kit", "frontend", "npm-install"]
+}
