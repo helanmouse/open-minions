@@ -1,0 +1,7 @@
+{
+  "name": "fix-a-bug",
+  "difficulty": "easy",
+  "language": "python",
+  "taskType": "bugfix",
+  "tags": ["getting-started", "python", "bug-fix"]
+}
