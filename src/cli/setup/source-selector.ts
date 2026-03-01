@@ -61,7 +61,9 @@ export class SourceSelector {
               baseUrl: customUrl
             });
           } catch (error) {
-            // User cancelled - return to source selection
+            // User cancelled custom URL input - propagate cancellation
+            this.cleanup();
+            reject(error);
             return;
           }
         } else {
@@ -83,7 +85,6 @@ export class SourceSelector {
       this.ui.addChild(this.container);
       this.ui.setFocus(selectList);
 
-      console.error('Starting source selection...');
       this.ui.start();
     });
   }
