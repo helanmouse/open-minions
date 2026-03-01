@@ -165,15 +165,15 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     displayName: 'Kimi (Moonshot)',
     sources: [
       {
-        id: 'official-global',
-        name: '官方国际源',
-        url: 'https://api.moonshot.ai/v1',
+        id: 'official',
+        name: '官方源 (Anthropic Messages API)',
+        url: 'https://api.kimi.com/coding',
         isCustom: false
       },
       {
         id: 'official-cn',
         name: '官方中国源',
-        url: 'https://api.moonshot.cn/v1',
+        url: 'https://api.moonshot.cn/coding',
         isCustom: false
       },
       {
@@ -190,8 +190,8 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     sources: [
       {
         id: 'official',
-        name: '官方国际源',
-        url: 'https://api.minimax.io/v1',
+        name: '官方源 (Anthropic Messages API)',
+        url: 'https://api.minimax.io/anthropic',
         isCustom: false
       },
       {
@@ -208,8 +208,8 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     sources: [
       {
         id: 'official',
-        name: '官方中国源',
-        url: 'https://api.minimaxi.com/v1',
+        name: '官方中国源 (Anthropic Messages API)',
+        url: 'https://api.minimaxi.com/anthropic',
         isCustom: false
       },
       {
