@@ -1,0 +1,1 @@
+创建 hello.py 打印 'Hello from Minion!'，并创建 test_hello.py 验证输出。

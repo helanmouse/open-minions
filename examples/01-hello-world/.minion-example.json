@@ -1,0 +1,7 @@
+{
+  "name": "hello-world",
+  "difficulty": "easy",
+  "language": "python",
+  "taskType": "create",
+  "tags": ["getting-started", "python", "first-example"]
+}

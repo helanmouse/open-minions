@@ -1,0 +1,1 @@
+Create a hello.py that prints 'Hello from Minion!' and a test_hello.py that verifies the output.
