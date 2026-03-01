@@ -2,8 +2,10 @@
 
 export interface SetupConfig {
   provider: string;
+  source?: string;      // NEW: source ID
   model: string;
   apiKey: string;
+  customUrl?: string;   // NEW: custom URL if source is 'custom'
 }
 
 export interface SetupResult {
@@ -21,4 +23,10 @@ export interface ModelInfo {
   id: string;
   name: string;
   description?: string;
+}
+
+// NEW: Source selection result
+export interface SourceSelectionResult {
+  sourceId: string;
+  baseUrl: string;
 }
