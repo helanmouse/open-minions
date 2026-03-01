@@ -1,0 +1,7 @@
+{
+  "name": "python-cli",
+  "difficulty": "medium",
+  "language": "python",
+  "taskType": "bugfix",
+  "tags": ["python", "csv", "encoding", "utf-8", "i18n"]
+}
