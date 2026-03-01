@@ -6,7 +6,7 @@ import { createInterface } from 'readline';
 import { TUI, SelectList, Container, TextComponent, ProcessTerminal } from '@mariozechner/pi-tui';
 import { getProviders, getModels } from '@mariozechner/pi-ai';
 import type { SelectItem } from '@mariozechner/pi-tui';
-import type { SetupConfig, SetupResult } from './types.js';
+import type { SetupConfig, SetupResult, SourceSelectionResult } from './types.js';
 import { getProviderSources, type ProviderSources } from './sources.js';
 import { SourceSelector } from './source-selector.js';
 
@@ -63,7 +63,8 @@ export class TuiSetup {
         source: sourceResult.sourceId,
         model,
         apiKey,
-        customUrl: sourceResult.baseUrl || undefined
+        customUrl: sourceResult.baseUrl || undefined,
+        apiType: sourceResult.apiType
       };
     }
 
@@ -94,9 +95,9 @@ export class TuiSetup {
   /**
    * Select a source for the given provider
    * @param provider - The provider to select a source for
-   * @returns Promise containing sourceId and baseUrl
+   * @returns Promise containing sourceId, baseUrl, and apiType
    */
-  async selectSource(provider: string): Promise<{ sourceId: string; baseUrl: string }> {
+  async selectSource(provider: string): Promise<SourceSelectionResult> {
     const providerSources = getProviderSources(provider);
 
     if (!providerSources) {
@@ -291,8 +292,14 @@ export class TuiSetup {
 
     // Determine base URL: prefer customUrl, fall back to source-based URL, then default
     let baseUrl = config.customUrl;
+    let apiType = config.apiType;
+
     if (!baseUrl && config.source) {
       baseUrl = this.getBaseUrlForSource(config.provider, config.source);
+      // Also get apiType from source if not already set
+      if (!apiType) {
+        apiType = this.getApiTypeForSource(config.provider, config.source);
+      }
     }
     if (!baseUrl) {
       baseUrl = this.getBaseUrl(config.provider) || '';
@@ -301,7 +308,7 @@ export class TuiSetup {
     // Build provider configuration
     const providerConfig: any = {
       apiKey: `$${envVarName}`,
-      api: 'openai-completions',
+      api: apiType || 'openai-completions',
       models: [
         {
           id: config.model,
@@ -360,6 +367,9 @@ export class TuiSetup {
     if (config.source) {
       existingConfig.source = config.source;
     }
+    if (config.apiType) {
+      existingConfig.apiType = config.apiType;
+    }
 
     await writeFile(configJsonPath, JSON.stringify(existingConfig, null, 2));
   }
@@ -389,6 +399,20 @@ export class TuiSetup {
 
     const source = providerSources.sources.find(s => s.id === sourceId);
     return source?.url || '';
+  }
+
+  /**
+   * Get the API type for a specific source of a provider
+   * @param provider - The provider identifier
+   * @param sourceId - The source identifier
+   * @returns The API type for the source, or undefined if not found
+   */
+  private getApiTypeForSource(provider: string, sourceId: string): string | undefined {
+    const providerSources = getProviderSources(provider);
+    if (!providerSources) return undefined;
+
+    const source = providerSources.sources.find(s => s.id === sourceId);
+    return source?.apiType;
   }
 
   /**

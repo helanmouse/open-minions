@@ -6,6 +6,7 @@ export interface SetupConfig {
   apiKey: string;
   source?: string;      // Source ID for selecting different API sources
   customUrl?: string;   // Custom URL when source is 'custom'
+  apiType?: string;     // API type (e.g., 'openai-completions', 'anthropic-messages')
 }
 
 export interface SetupResult {
@@ -25,8 +26,9 @@ export interface ModelInfo {
   description?: string;
 }
 
-/** Result of source selection containing source ID and base URL */
+/** Result of source selection containing source ID, base URL, and API type */
 export interface SourceSelectionResult {
   sourceId: string;  // Maps to SetupConfig.source
   baseUrl: string;   // API base URL for the selected source
+  apiType?: string;  // API type (e.g., 'openai-completions', 'anthropic-messages')
 }

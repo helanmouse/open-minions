@@ -12,6 +12,8 @@ export interface Source {
   url: string;
   /** True if this source requires user input */
   isCustom: boolean;
+  /** API type to use (openai-completions, anthropic-messages, etc.) */
+  apiType?: 'openai-completions' | 'anthropic-messages' | 'openai-responses' | 'google-generative-ai' | string;
 }
 
 export interface ProviderSources {
@@ -30,19 +32,35 @@ export interface ProviderSources {
 export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
   zai: {
     provider: 'zai',
-    displayName: 'Zhipu AI',
+    displayName: 'Zhipu AI (GLM)',
     sources: [
       {
-        id: 'official-cn',
-        name: '官方中国源',
+        id: 'cn-openai',
+        name: '中国源 (OpenAI 兼容)',
         url: 'https://open.bigmodel.cn/api/paas/v4',
-        isCustom: false
+        isCustom: false,
+        apiType: 'openai-completions'
       },
       {
-        id: 'official-intl',
-        name: '官方国际源',
-        url: 'https://api.zhipu.ai/v1',
-        isCustom: false
+        id: 'cn-anthropic',
+        name: '中国源 (Anthropic 兼容)',
+        url: 'https://open.bigmodel.cn/api/anthropic',
+        isCustom: false,
+        apiType: 'anthropic-messages'
+      },
+      {
+        id: 'intl-openai',
+        name: '国际源 (OpenAI 兼容)',
+        url: 'https://api.z.ai/api/coding/paas/v4',
+        isCustom: false,
+        apiType: 'openai-completions'
+      },
+      {
+        id: 'intl-anthropic',
+        name: '国际源 (Anthropic 兼容)',
+        url: 'https://api.z.ai/api/coding/anthropic',
+        isCustom: false,
+        apiType: 'anthropic-messages'
       },
       {
         id: 'custom',
@@ -112,9 +130,10 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     sources: [
       {
         id: 'official',
-        name: '官方源',
-        url: 'https://api.deepseek.com/v1',
-        isCustom: false
+        name: '官方源 (OpenAI 兼容)',
+        url: 'https://api.deepseek.com/anthropic',
+        isCustom: false,
+        apiType: 'anthropic-messages'
       },
       {
         id: 'custom',
@@ -165,16 +184,18 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     displayName: 'Kimi (Moonshot)',
     sources: [
       {
-        id: 'official',
-        name: '官方源 (Anthropic Messages API)',
+        id: 'global',
+        name: '国际源 (Anthropic 兼容)',
         url: 'https://api.kimi.com/coding',
-        isCustom: false
+        isCustom: false,
+        apiType: 'anthropic-messages'
       },
       {
-        id: 'official-cn',
-        name: '官方中国源',
+        id: 'cn',
+        name: '中国源 (Anthropic 兼容)',
         url: 'https://api.moonshot.cn/coding',
-        isCustom: false
+        isCustom: false,
+        apiType: 'anthropic-messages'
       },
       {
         id: 'custom',
@@ -189,10 +210,11 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     displayName: 'MiniMax',
     sources: [
       {
-        id: 'official',
-        name: '官方源 (Anthropic Messages API)',
+        id: 'global',
+        name: '国际源 (Anthropic 兼容)',
         url: 'https://api.minimax.io/anthropic',
-        isCustom: false
+        isCustom: false,
+        apiType: 'anthropic-messages'
       },
       {
         id: 'custom',
@@ -207,10 +229,39 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
     displayName: 'MiniMax 中国',
     sources: [
       {
-        id: 'official',
-        name: '官方中国源 (Anthropic Messages API)',
+        id: 'cn',
+        name: '中国源 (Anthropic 兼容)',
         url: 'https://api.minimaxi.com/anthropic',
-        isCustom: false
+        isCustom: false,
+        apiType: 'anthropic-messages'
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  // Note: Qwen (Alibaba) uses openai-completions with custom baseUrl
+  // We use 'openai' as the base provider with custom baseUrl
+  'qwen': {
+    provider: 'openai',  // Use OpenAI-compatible API
+    displayName: 'Qwen (通义千问)',
+    sources: [
+      {
+        id: 'global',
+        name: '国际源 (OpenAI 兼容)',
+        url: 'https://coding-intl.dashscope.aliyuncs.com/apps/anthropic',
+        isCustom: false,
+        apiType: 'openai-completions'
+      },
+      {
+        id: 'cn',
+        name: '中国源 (OpenAI 兼容)',
+        url: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
+        isCustom: false,
+        apiType: 'openai-completions'
       },
       {
         id: 'custom',

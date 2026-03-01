@@ -2,19 +2,28 @@ import { describe, it, expect } from 'vitest';
 import { PROVIDER_SOURCES } from './sources.js';
 
 describe('ProviderSources', () => {
-  it('should have zai provider with 3 sources', () => {
+  it('should have zai provider with multiple sources', () => {
     const zai = PROVIDER_SOURCES.zai;
     expect(zai).toBeDefined();
     expect(zai.provider).toBe('zai');
-    expect(zai.displayName).toBe('Zhipu AI');
-    expect(zai.sources).toHaveLength(3);
+    expect(zai.displayName).toBe('Zhipu AI (GLM)');
+    expect(zai.sources.length).toBeGreaterThanOrEqual(4); // cn-openai, cn-anthropic, intl-openai, intl-anthropic, custom
   });
 
-  it('should have official-cn source with correct URL', () => {
-    const cnSource = PROVIDER_SOURCES.zai.sources.find(s => s.id === 'official-cn');
+  it('should have cn-openai source with correct URL and API type', () => {
+    const cnSource = PROVIDER_SOURCES.zai.sources.find(s => s.id === 'cn-openai');
     expect(cnSource).toBeDefined();
     expect(cnSource?.url).toBe('https://open.bigmodel.cn/api/paas/v4');
     expect(cnSource?.isCustom).toBe(false);
+    expect(cnSource?.apiType).toBe('openai-completions');
+  });
+
+  it('should have cn-anthropic source with correct URL and API type', () => {
+    const cnSource = PROVIDER_SOURCES.zai.sources.find(s => s.id === 'cn-anthropic');
+    expect(cnSource).toBeDefined();
+    expect(cnSource?.url).toBe('https://open.bigmodel.cn/api/anthropic');
+    expect(cnSource?.isCustom).toBe(false);
+    expect(cnSource?.apiType).toBe('anthropic-messages');
   });
 
   it('should have custom source with empty URL', () => {

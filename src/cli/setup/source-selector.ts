@@ -58,7 +58,8 @@ export class SourceSelector {
             this.cleanup();
             resolve({
               sourceId: selectedSource.id,
-              baseUrl: customUrl
+              baseUrl: customUrl,
+              apiType: selectedSource.apiType
             });
           } catch (error) {
             // User cancelled custom URL input - propagate cancellation
@@ -71,7 +72,8 @@ export class SourceSelector {
           this.cleanup();
           resolve({
             sourceId: selectedSource.id,
-            baseUrl: selectedSource.url
+            baseUrl: selectedSource.url,
+            apiType: selectedSource.apiType
           });
         }
       };
