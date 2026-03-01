@@ -87,8 +87,37 @@ export class MinionsConfig {
       return process.env.LLM_API_KEY;
     }
 
-    // Check .pi/config.json for stored API keys (try both provider names)
+    // Check source configuration in models.json for API key
     const configPath = join(this.agentDir, '.pi', 'config.json');
+    const modelsPath = join(this.agentDir, '.pi', 'models.json');
+    try {
+      // Read sourceId from config.json
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      const sourceId = config.source;
+
+      if (sourceId) {
+        // Read models.json to get source config
+        const models = JSON.parse(readFileSync(modelsPath, 'utf-8'));
+
+        // Check both resolved and original provider names
+        const providerName = originalProvider || model.provider;
+        const providerConfig = models.providers[providerName] || models.providers[model.provider];
+
+        if (providerConfig?.sources?.[sourceId]?.apiKey) {
+          let apiKey = providerConfig.sources[sourceId].apiKey;
+          // Resolve $ENV_VAR syntax
+          if (apiKey.startsWith('$')) {
+            const envVar = apiKey.slice(1);
+            apiKey = process.env[envVar] || apiKey;
+          }
+          return apiKey;
+        }
+      }
+    } catch {
+      // Fall through to next check
+    }
+
+    // Check .pi/config.json for stored API keys (try both provider names) for backward compatibility
     try {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
       if (config.apiKeys) {
