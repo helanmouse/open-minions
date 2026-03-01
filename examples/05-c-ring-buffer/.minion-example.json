@@ -1,0 +1,7 @@
+{
+  "name": "c-ring-buffer",
+  "difficulty": "medium",
+  "language": "c",
+  "taskType": "implement",
+  "tags": ["c", "data-structure", "implement-from-spec"]
+}
