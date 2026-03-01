@@ -3,7 +3,7 @@ import { mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { createInterface } from 'readline';
-import { TUI, SelectList, Container, TextComponent, ProcessTerminal } from '@mariozechner/pi-tui';
+import { TUI, SelectList, Container, TextComponent, TextEditor, ProcessTerminal } from '@mariozechner/pi-tui';
 import { getProviders, getModels } from '@mariozechner/pi-ai';
 import type { SelectItem } from '@mariozechner/pi-tui';
 import type { SetupConfig, SetupResult, SourceSelectionResult } from './types.js';
@@ -128,7 +128,7 @@ export class TuiSetup {
 
   /**
    * Select or input API key
-   * Checks environment variable first, falls back to readline input
+   * Uses TUI TextEditor for input, with environment variable as default
    * @param provider - The provider to get the API key for
    * @returns Promise<string> the API key
    */
@@ -136,12 +136,8 @@ export class TuiSetup {
     const envVarName = this.getEnvVarName(provider);
     const envKey = process.env[envVarName];
 
-    if (envKey) {
-      return envKey;
-    }
-
-    // Fallback to readline input
-    return this.promptForApiKey(envVarName);
+    // Always prompt for API key using TUI, with env var as default
+    return this.promptForApiKeyTUI(envVarName, envKey);
   }
 
   /**
@@ -176,6 +172,81 @@ export class TuiSetup {
       container.addChild(selectList);
       ui.addChild(container);
       ui.setFocus(selectList);
+
+      console.error('Starting TUI...');
+      ui.start();
+      console.error('TUI started');
+    });
+  }
+
+  /**
+   * Prompt for API key using TUI TextEditor
+   * @param envVarName - The environment variable name to display
+   * @param defaultValue - Default value (from environment variable)
+   * @returns Promise<string> the entered API key
+   */
+  private async promptForApiKeyTUI(envVarName: string, defaultValue?: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const terminal = new ProcessTerminal();
+      const ui = new TUI(terminal);
+      const container = new Container();
+
+      // Add title and instructions
+      if (defaultValue) {
+        const masked = defaultValue.length > 12
+          ? `${defaultValue.slice(0, 8)}...${defaultValue.slice(-4)}`
+          : '***';
+        container.addChild(new TextComponent(
+          `API Key (${envVarName})`,
+          { bottom: 2, top: 0 }
+        ));
+        container.addChild(new TextComponent(
+          `Current: ${masked} (from environment)`,
+          { bottom: 1, top: 1 }
+        ));
+        container.addChild(new TextComponent(
+          'Press Enter to keep, or type new key and press Enter',
+          { bottom: 0, top: 2 }
+        ));
+      } else {
+        container.addChild(new TextComponent(
+          `Enter API Key (${envVarName})`,
+          { bottom: 1, top: 0 }
+        ));
+        container.addChild(new TextComponent(
+          'Press Enter when done, Ctrl+C to cancel',
+          { bottom: 0, top: 1 }
+        ));
+      }
+
+      // Create text editor for input
+      const editor = new TextEditor();
+      // Start with empty input - user can type new key or just press Enter to use existing
+      editor.setText('');
+
+      editor.onSubmit = () => {
+        const value = editor.getText().trim();
+
+        // If empty and we have a default, use the default
+        if (!value && defaultValue) {
+          ui.stop();
+          resolve(defaultValue);
+          return;
+        }
+
+        if (!value) {
+          console.error('\nError: API key is required');
+          console.error('Press Ctrl+C to cancel or enter a valid API key');
+          return;
+        }
+
+        ui.stop();
+        resolve(value);
+      };
+
+      container.addChild(editor);
+      ui.addChild(container);
+      ui.setFocus(editor);
 
       console.error('Starting TUI...');
       ui.start();
