@@ -23,18 +23,96 @@ export interface ProviderSources {
   provider: string;
   /** Human-readable display name */
   displayName: string;
+  /** Description shown in provider list */
+  description?: string;
   /** Available sources for this provider */
   sources: Source[];
 }
+
+/**
+ * Curated list of providers to display in setup
+ * This list is manually maintained and controls what users see
+ * Order matters - providers appear in this order in the UI
+ */
+export const DISPLAY_PROVIDERS = [
+  'openai',
+  'anthropic',
+  'google',
+  'zai',
+  'deepseek',
+  'xai',
+  'groq',
+  'kimi-coding',
+  'minimax',
+  'qwen',
+] as const;
 
 /**
  * Registry of all providers and their available sources
  * Add new providers here to make them available in setup
  */
 export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
+  openai: {
+    provider: 'openai',
+    displayName: 'OpenAI',
+    description: 'GPT-4o, GPT-4o-mini, o1, o3-mini',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  anthropic: {
+    provider: 'anthropic',
+    displayName: 'Anthropic',
+    description: 'Claude 3.5 Sonnet, Claude 3.5 Haiku',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
+  google: {
+    provider: 'google',
+    displayName: 'Google',
+    description: 'Gemini 2.0 Flash, Gemini Pro',
+    sources: [
+      {
+        id: 'official',
+        name: '官方源',
+        url: '',
+        isCustom: false
+      },
+      {
+        id: 'custom',
+        name: '自定义 API 地址',
+        url: '',
+        isCustom: true
+      },
+    ],
+  },
   zai: {
     provider: 'zai',
-    displayName: 'Zhipu AI (GLM)',
+    displayName: 'Zhipu AI',
+    description: 'GLM-4 Flash, GLM-4 Plus, GLM-5',
     sources: [
       {
         id: 'cn-openai',
@@ -72,67 +150,14 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       },
     ],
   },
-  openai: {
-    provider: 'openai',
-    displayName: 'OpenAI',
-    sources: [
-      {
-        id: 'official',
-        name: '官方源',
-        url: '',
-        isCustom: false
-      },
-      {
-        id: 'custom',
-        name: '自定义 API 地址',
-        url: '',
-        isCustom: true
-      },
-    ],
-  },
-  anthropic: {
-    provider: 'anthropic',
-    displayName: 'Anthropic',
-    sources: [
-      {
-        id: 'official',
-        name: '官方源',
-        url: '',
-        isCustom: false
-      },
-      {
-        id: 'custom',
-        name: '自定义 API 地址',
-        url: '',
-        isCustom: true
-      },
-    ],
-  },
-  google: {
-    provider: 'google',
-    displayName: 'Google',
-    sources: [
-      {
-        id: 'official',
-        name: '官方源',
-        url: '',
-        isCustom: false
-      },
-      {
-        id: 'custom',
-        name: '自定义 API 地址',
-        url: '',
-        isCustom: true
-      },
-    ],
-  },
   deepseek: {
     provider: 'deepseek',
     displayName: 'DeepSeek',
+    description: 'DeepSeek V3, DeepSeek R1',
     sources: [
       {
         id: 'official',
-        name: '官方源 (OpenAI 兼容)',
+        name: '官方源 (Anthropic 兼容)',
         url: 'https://api.deepseek.com/anthropic',
         isCustom: false,
         apiType: 'anthropic-messages'
@@ -145,9 +170,10 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       },
     ],
   },
-  groq: {
-    provider: 'groq',
-    displayName: 'Groq',
+  xai: {
+    provider: 'xai',
+    displayName: 'xAI',
+    description: 'Grok-2, Grok-mini',
     sources: [
       {
         id: 'official',
@@ -163,9 +189,10 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       },
     ],
   },
-  xai: {
-    provider: 'xai',
-    displayName: 'xAI (Grok)',
+  groq: {
+    provider: 'groq',
+    displayName: 'Groq',
+    description: 'Llama 3.3, Mixtral',
     sources: [
       {
         id: 'official',
@@ -183,7 +210,8 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
   },
   'kimi-coding': {
     provider: 'kimi-coding',
-    displayName: 'Kimi (Moonshot)',
+    displayName: 'Kimi',
+    description: 'Moonshot AI',
     sources: [
       {
         id: 'global',
@@ -210,6 +238,7 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
   minimax: {
     provider: 'minimax',
     displayName: 'MiniMax',
+    description: 'MiniMax-Text-01',
     sources: [
       {
         id: 'global',
@@ -234,11 +263,10 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
       },
     ],
   },
-  // Note: Qwen (Alibaba) uses anthropic-messages with custom baseUrl
-  // We use 'openai' as the base provider with custom baseUrl
-  'qwen': {
-    provider: 'openai',  // Use OpenAI-compatible API
-    displayName: 'Qwen (通义千问)',
+  qwen: {
+    provider: 'openai',
+    displayName: 'Qwen',
+    description: '通义千问 (Alibaba)',
     sources: [
       {
         id: 'global',

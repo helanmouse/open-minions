@@ -4,10 +4,10 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { createInterface } from 'readline';
 import { TUI, SelectList, Container, TextComponent, TextEditor, ProcessTerminal } from '@mariozechner/pi-tui';
-import { getProviders, getModels } from '@mariozechner/pi-ai';
+import { getModels } from '@mariozechner/pi-ai';
 import type { SelectItem } from '@mariozechner/pi-tui';
 import type { SetupConfig, SetupResult, SourceSelectionResult } from './types.js';
-import { getProviderSources, type ProviderSources } from './sources.js';
+import { getProviderSources, DISPLAY_PROVIDERS, PROVIDER_SOURCES, type ProviderSources } from './sources.js';
 import { SourceSelector } from './source-selector.js';
 
 /**
@@ -84,16 +84,15 @@ export class TuiSetup {
    * @returns Promise<string> the selected provider ID
    */
   async selectProvider(): Promise<string> {
-    const providers = getProviders();
-    // Filter out providers that are handled as sources of other providers
-    const hiddenProviders = ['minimax-cn'];
-    const filteredProviders = providers.filter(p => !hiddenProviders.includes(p));
-
-    const items: SelectItem[] = filteredProviders.map((p) => ({
-      value: p,
-      label: this.formatProviderLabel(p),
-      description: this.getProviderDescription(p),
-    }));
+    // Use our curated list of providers instead of pi-ai's getProviders()
+    const items: SelectItem[] = DISPLAY_PROVIDERS.map((providerId) => {
+      const providerConfig = PROVIDER_SOURCES[providerId];
+      return {
+        value: providerId,
+        label: providerConfig.displayName,
+        description: providerConfig.description || '',
+      };
+    });
 
     return this.runSelectList('Select a Provider', items);
   }
@@ -281,41 +280,6 @@ export class TuiSetup {
         }
       });
     });
-  }
-
-  /**
-   * Format provider label for display
-   * @param provider - The provider ID
-   * @returns Formatted label
-   */
-  private formatProviderLabel(provider: string): string {
-    const labels: Record<string, string> = {
-      openai: 'OpenAI',
-      anthropic: 'Anthropic',
-      google: 'Google',
-      zai: 'Zhipu AI',
-      xai: 'xAI (Grok)',
-      groq: 'Groq',
-      deepseek: 'DeepSeek',
-    };
-    return labels[provider] || provider;
-  }
-
-  /**
-   * Get provider description
-   * @param provider - The provider ID
-   * @returns Provider description
-   */
-  private getProviderDescription(provider: string): string {
-    const descriptions: Record<string, string> = {
-      openai: 'GPT-4o, GPT-4o-mini, o1, o3-mini',
-      anthropic: 'Claude 3.5 Sonnet, Claude 3.5 Haiku',
-      google: 'Gemini 2.0 Flash, Gemini Pro',
-      zai: 'GLM-4 Flash, GLM-4 Plus',
-      xai: 'Grok-2, Grok-mini',
-      groq: 'Llama 3.3, Mixtral',
-    };
-    return descriptions[provider] || '';
   }
 
   /**
