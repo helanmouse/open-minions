@@ -300,7 +300,6 @@ export class TuiSetup {
 
     // Build provider configuration
     const providerConfig: any = {
-      baseUrl,
       apiKey: `$${envVarName}`,
       api: 'openai-completions',
       models: [
@@ -315,6 +314,11 @@ export class TuiSetup {
         },
       ],
     };
+
+    // Only set baseUrl if it's not empty
+    if (baseUrl) {
+      providerConfig.baseUrl = baseUrl;
+    }
 
     // Add source configuration if sourceId is specified
     if (config.source) {
