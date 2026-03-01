@@ -1,0 +1,1 @@
+重构 monolith.ts：把验证逻辑提取到 src/validator.ts，格式化逻辑提取到 src/formatter.ts，计算逻辑提取到 src/calculator.ts。monolith.ts 从新模块重新导出。不修改测试文件，保持所有测试通过。

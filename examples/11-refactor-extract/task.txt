@@ -1,0 +1,1 @@
+Refactor monolith.ts: extract validation into src/validator.ts, formatting into src/formatter.ts, calculation into src/calculator.ts. Update monolith.ts to re-export from the new modules. Keep all existing tests passing without modifying them.

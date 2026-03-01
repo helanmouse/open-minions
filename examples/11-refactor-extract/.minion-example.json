@@ -1,0 +1,7 @@
+{
+  "name": "refactor-extract",
+  "difficulty": "medium",
+  "language": "typescript",
+  "taskType": "refactor",
+  "tags": ["typescript", "refactoring", "module-extraction"]
+}
