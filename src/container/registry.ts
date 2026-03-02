@@ -1,0 +1,91 @@
+/**
+ * Represents a container tracked by the registry.
+ * Containers can be running, completed, failed, or preserved for debugging.
+ */
+export interface ContainerHandle {
+  /** Unique container ID */
+  id: string
+  /** ID of the task this container is executing */
+  taskId: string
+  /** Current container status */
+  status: 'running' | 'done' | 'failed' | 'preserved'
+  /** Additional metadata about the container */
+  metadata: {
+    /** Retry attempt number (1-based) */
+    attempt?: number
+    /** Index in parallel execution (0-based) */
+    parallelIndex?: number
+    /** Reason for preservation (if status is 'preserved') */
+    preserveReason?: string
+    /** Snapshot ID if container was snapshotted */
+    snapshotId?: string
+  }
+}
+
+/**
+ * Registry for tracking all containers in the system.
+ * Provides query capabilities for finding containers by task, status, etc.
+ */
+export class ContainerRegistry {
+  private containers = new Map<string, ContainerHandle>()
+
+  /**
+   * Register a container in the registry.
+   * @param container The container to register
+   */
+  register(container: ContainerHandle): void {
+    this.containers.set(container.id, container)
+  }
+
+  /**
+   * Remove a container from the registry.
+   * @param containerId The container ID to unregister
+   */
+  unregister(containerId: string): void {
+    this.containers.delete(containerId)
+  }
+
+  /**
+   * Get a container by ID.
+   * @param containerId The container ID
+   * @returns The container or null if not found
+   */
+  get(containerId: string): ContainerHandle | null {
+    return this.containers.get(containerId) || null
+  }
+
+  /**
+   * List all registered containers.
+   * @returns Array of all containers
+   */
+  list(): ContainerHandle[] {
+    return Array.from(this.containers.values())
+  }
+
+  /**
+   * Find all containers for a specific task.
+   * @param taskId The task ID
+   * @returns Array of containers for the task
+   */
+  findByTask(taskId: string): ContainerHandle[] {
+    return this.list().filter(c => c.taskId === taskId)
+  }
+
+  /**
+   * Find all preserved containers.
+   * @returns Array of preserved containers
+   */
+  findPreserved(): ContainerHandle[] {
+    return this.list().filter(c => c.status === 'preserved')
+  }
+
+  /**
+   * Find containers older than specified hours.
+   * @param hours Number of hours
+   * @returns Array of old containers
+   */
+  findOlderThan(hours: number): ContainerHandle[] {
+    // TODO: implement when we add timestamps
+    return []
+  }
+}
