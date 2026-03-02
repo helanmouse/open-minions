@@ -6,8 +6,6 @@ import { ContainerRegistry, ContainerHandle } from '../container/registry'
 export interface ContainerConfig {
   /** Docker image to use */
   image: string
-  /** Task ID this container is executing */
-  taskId: string
   /** Memory limit (e.g., "4g", "512m") */
   memory?: string
   /** Number of CPU cores */
@@ -38,9 +36,10 @@ export class ContainerManagementTools {
   /**
    * Start a new container and register it.
    * @param config Container configuration
+   * @param taskId Task ID this container is executing
    * @returns The registered container handle
    */
-  async start_container(config: ContainerConfig): Promise<ContainerHandle> {
+  async start_container(config: ContainerConfig, taskId: string): Promise<ContainerHandle> {
     const result = await this.sandbox.start({
       image: config.image,
       memory: config.memory || '4g',
@@ -50,7 +49,7 @@ export class ContainerManagementTools {
 
     const container: ContainerHandle = {
       id: result.containerId,
-      taskId: config.taskId,
+      taskId: taskId,
       status: 'running',
       createdAt: Date.now(),
       updatedAt: Date.now(),

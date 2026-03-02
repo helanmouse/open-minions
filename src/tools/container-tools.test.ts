@@ -27,9 +27,8 @@ describe('ContainerManagementTools', () => {
     const handle = await tools.start_container({
       image: 'minion-base',
       memory: '4g',
-      cpus: 2,
-      taskId: 'task-456'
-    })
+      cpus: 2
+    }, 'task-456')
 
     expect(handle.id).toBe('test-container-1')
     expect(handle.taskId).toBe('task-456')
@@ -39,9 +38,8 @@ describe('ContainerManagementTools', () => {
 
   it('should preserve container with reason', async () => {
     const handle = await tools.start_container({
-      image: 'minion-base',
-      taskId: 'task-456'
-    })
+      image: 'minion-base'
+    }, 'task-456')
 
     await tools.preserve_container(handle.id, 'test failure')
 
@@ -52,9 +50,8 @@ describe('ContainerManagementTools', () => {
 
   it('should stop container and update status', async () => {
     const handle = await tools.start_container({
-      image: 'minion-base',
-      taskId: 'task-456'
-    })
+      image: 'minion-base'
+    }, 'task-456')
 
     await tools.stop_container(handle.id)
 
@@ -64,8 +61,8 @@ describe('ContainerManagementTools', () => {
   })
 
   it('should list all containers', async () => {
-    await tools.start_container({ image: 'minion-base', taskId: 't1' })
-    await tools.start_container({ image: 'minion-base', taskId: 't2' })
+    await tools.start_container({ image: 'minion-base' }, 't1')
+    await tools.start_container({ image: 'minion-base' }, 't2')
 
     const containers = tools.list_containers()
     expect(containers).toHaveLength(2)
