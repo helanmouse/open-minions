@@ -20,6 +20,10 @@ export interface ContainerHandle {
     /** Snapshot ID if container was snapshotted */
     snapshotId?: string
   }
+  /** Timestamp when container was created (milliseconds since epoch) */
+  createdAt: number
+  /** Timestamp when container was last updated (milliseconds since epoch) */
+  updatedAt: number
 }
 
 /**
@@ -34,7 +38,13 @@ export class ContainerRegistry {
    * @param container The container to register
    */
   register(container: ContainerHandle): void {
-    this.containers.set(container.id, container)
+    const now = Date.now()
+    const containerWithTimestamps = {
+      ...container,
+      createdAt: container.createdAt || now,
+      updatedAt: container.updatedAt || now
+    }
+    this.containers.set(container.id, containerWithTimestamps)
   }
 
   /**
@@ -85,7 +95,31 @@ export class ContainerRegistry {
    * @returns Array of old containers
    */
   findOlderThan(hours: number): ContainerHandle[] {
-    // TODO: implement when we add timestamps
-    return []
+    const cutoffTime = Date.now() - (hours * 60 * 60 * 1000)
+    return this.list().filter(c => c.createdAt < cutoffTime)
+  }
+
+  /**
+   * Update a container's properties.
+   * @param containerId The container ID to update
+   * @param updates Partial container properties to update
+   * @returns true if updated, false if container not found
+   */
+  update(containerId: string, updates: Partial<Omit<ContainerHandle, 'id' | 'createdAt'>>): boolean {
+    const container = this.containers.get(containerId)
+    if (!container) {
+      return false
+    }
+
+    const updated = {
+      ...container,
+      ...updates,
+      id: container.id, // Preserve original ID
+      createdAt: container.createdAt, // Preserve creation time
+      updatedAt: Date.now()
+    }
+
+    this.containers.set(containerId, updated)
+    return true
   }
 }
