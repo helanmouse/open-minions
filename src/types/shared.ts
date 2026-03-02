@@ -18,6 +18,8 @@ export type TaskStatusType = typeof TaskStatus[number];
 export interface TaskRequest {
   id: string;
   description: string;
+  parsedTask?: string;            // extracted task description
+  strategy?: import('./strategy.js').ExecutionStrategy;  // execution strategy
   repo: string;                   // local path or remote URL
   repoType: 'local' | 'remote';
   branch: string;                 // e.g. "minion/abc123"
