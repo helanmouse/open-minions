@@ -60,6 +60,9 @@ User: "Fix login page crash when email is empty"
 ### Key Features
 
 - **Natural Language First** — Describe your task in plain language, the agent handles the rest
+- **AI Orchestrator** — Intelligent task execution with natural language control over container lifecycle, parallel execution, and error handling
+- **Smart Mode Detection** — Automatically switches to AI mode when keywords like "preserve", "parallel", "retry" are detected
+- **Container Lifecycle Management** — Preserve containers for debugging, create snapshots, manage parallel executions
 - **pi-mono Integration** — Unified LLM interface via `@mariozechner/pi-ai`
 - **Docker Sandbox Isolation** — All code execution happens in a secure container
 - **Offline Runtime** — pi-runtime pre-built on host, mounted to containers
@@ -128,8 +131,10 @@ npm run docker:build
 
 #### Usage
 
+**Basic Usage:**
+
 ```bash
-# Run a task
+# Run a task (legacy mode)
 minion run "Fix login page crash when email is empty"
 
 # With options
@@ -145,6 +150,34 @@ minion stop <task-id>                     # Stop running task
 minion setup                              # Interactive configuration
 minion config                              # View current configuration
 ```
+
+**AI Orchestrator Mode (New!):**
+
+The AI Orchestrator automatically activates when you use natural language keywords:
+
+```bash
+# Preserve container on failure for debugging
+minion run "Fix the bug, preserve container if failed"
+
+# Run task multiple times in parallel
+minion run "Try this optimization 3 times in parallel"
+
+# Auto-apply patches without confirmation
+minion run "Add feature X, auto-apply patches"
+
+# Retry on failure
+minion run "Deploy to staging, retry if failed"
+
+# Custom resource allocation
+minion run "Run heavy task, use 8g memory and 4 cores"
+
+# Force AI mode with environment variable
+MINION_AI_MODE=true minion run "Any task description"
+```
+
+**AI Mode Keywords:**
+- English: `preserve`, `snapshot`, `parallel`, `retry`, `auto-apply`, `keep container`
+- Chinese: `保留`, `快照`, `并行`, `重试`, `自动应用`
 
 ### Project Configuration
 
@@ -232,6 +265,9 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 ### 核心特性
 
 - **自然语言优先** — 用自然语言描述任务，代理自动完成
+- **AI 编排器** — 智能任务执行，支持自然语言控制容器生命周期、并行执行和错误处理
+- **智能模式检测** — 检测到"保留"、"并行"、"重试"等关键词时自动切换到 AI 模式
+- **容器生命周期管理** — 保留容器用于调试、创建快照、管理并行执行
 - **pi-mono 集成** — 通过 `@mariozechner/pi-ai` 统一 LLM 接口
 - **Docker 沙箱隔离** — 所有代码执行都在安全容器中进行
 - **离线运行时** — pi-runtime 在宿主机预构建，挂载到容器内
@@ -298,8 +334,10 @@ npm run docker:build
 
 #### 使用
 
+**基础用法：**
+
 ```bash
-# 运行任务
+# 运行任务（传统模式）
 minion run "修复登录页面空邮箱时的崩溃问题"
 
 # 带选项运行
@@ -315,6 +353,34 @@ minion stop <task-id>                     # 停止运行中的任务
 minion setup                              # 交互式配置
 minion config                              # 查看当前配置
 ```
+
+**AI 编排器模式（新功能！）：**
+
+当使用自然语言关键词时，AI 编排器会自动激活：
+
+```bash
+# 失败时保留容器用于调试
+minion run "修复这个 bug，如果失败保留容器"
+
+# 并行运行任务多次
+minion run "尝试这个优化 3 次并行"
+
+# 自动应用补丁无需确认
+minion run "添加功能 X，自动应用补丁"
+
+# 失败时重试
+minion run "部署到测试环境，失败时重试"
+
+# 自定义资源分配
+minion run "运行重型任务，使用 8g 内存和 4 核"
+
+# 使用环境变量强制启用 AI 模式
+MINION_AI_MODE=true minion run "任意任务描述"
+```
+
+**AI 模式关键词：**
+- 中文：`保留`、`快照`、`并行`、`重试`、`自动应用`
+- 英文：`preserve`、`snapshot`、`parallel`、`retry`、`auto-apply`、`keep container`
 
 ### 配置说明
 
