@@ -83,4 +83,46 @@ describe('PromptParser', () => {
     expect(result.parsedTask).toBe('create hello.py')
     expect(result.strategy).toEqual(getDefaultStrategy())
   })
+
+  it('should handle LLM network failures gracefully', async () => {
+    mockLLM.chat.mockRejectedValue(new Error('Network error'))
+
+    const result = await parser.parse('create hello.py')
+
+    expect(result.parsedTask).toBe('create hello.py')
+    expect(result.strategy).toEqual(getDefaultStrategy())
+  })
+
+  it('should merge partial strategy with defaults', async () => {
+    mockLLM.chat.mockResolvedValue({
+      content: JSON.stringify({
+        task: 'create hello.py',
+        strategy: { preserveOnFailure: true, timeout: 60 }
+      })
+    })
+
+    const result = await parser.parse('create hello.py')
+
+    const expectedStrategy = {
+      ...getDefaultStrategy(),
+      preserveOnFailure: true,
+      timeout: 60
+    }
+
+    expect(result.strategy).toEqual(expectedStrategy)
+  })
+
+  it('should convert timeout from minutes to seconds', async () => {
+    mockLLM.chat.mockResolvedValue({
+      content: JSON.stringify({
+        task: 'create hello.py',
+        strategy: { timeout: 5 }
+      })
+    })
+
+    const result = await parser.parse('create hello.py with 5m timeout')
+
+    // When LLM extracts timeout from "5m", it should be converted to seconds
+    expect(result.strategy.timeout).toBe(300) // 5 minutes = 300 seconds
+  })
 })

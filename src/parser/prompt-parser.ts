@@ -14,7 +14,7 @@ export interface ParsedPrompt {
  * Minimal LLM interface for prompt parsing.
  */
 export interface LLMAdapter {
-  chat(messages: Array<{ role: string; content: string }>, tools: any[]): Promise<{ content: string }>
+  chat(messages: Array<{ role: string; content: string }>, tools: unknown[]): Promise<{ content: string }>
 }
 
 /**
@@ -42,7 +42,12 @@ Strategy keywords:
 - "retry" / "重试" → retryOnFailure: true
 - "use Xg memory" / "使用Xg内存" → memory: "Xg"
 - "use N cores" / "使用N核" → cpus: N
-- "timeout Xm" / "超时Xm" → timeout: X (in minutes)
+- "timeout Xs" / "超时Xs" → timeout: X (in seconds)
+- "timeout Xm" / "超时Xm" → timeout: X (in minutes, will be converted to seconds)
+
+Example:
+Input: "create hello.py with 5m timeout, preserve container if failed"
+Output: {"task": "create hello.py", "strategy": {"timeout": 5, "preserveOnFailure": true}}
 
 If no strategy keywords found, return empty strategy object {}.
 Only include strategy fields that are explicitly mentioned.`
@@ -86,12 +91,21 @@ export class PromptParser {
       }
 
       // Merge parsed strategy with defaults
+      const strategy = {
+        ...getDefaultStrategy(),
+        ...parsed.strategy
+      }
+
+      // Convert timeout from minutes to seconds if needed
+      // The LLM extracts timeout value in minutes when user specifies "Xm"
+      // We need to convert it to seconds since ExecutionStrategy.timeout is in seconds
+      if (parsed.strategy?.timeout !== undefined && userPrompt.match(/\d+m\b/)) {
+        strategy.timeout = parsed.strategy.timeout * 60
+      }
+
       return {
         parsedTask: parsed.task || userPrompt,
-        strategy: {
-          ...getDefaultStrategy(),
-          ...parsed.strategy
-        }
+        strategy
       }
     } catch (error) {
       // On any error, return original prompt with defaults
