@@ -136,13 +136,20 @@ export class HostAgent {
       }
     }
     const presetEnv = resolvePresets(userPresets);
-    const presetLines = Object.entries(presetEnv).map(([k, v]) => `${k}=${v}`);
+    // Helper to quote values that contain spaces or special characters
+    const quoteIfNeeded = (value: string) => {
+      if (/[\s"'$`\\]/.test(value)) {
+        return `"${value.replace(/"/g, '\\"')}"`;
+      }
+      return value;
+    };
+    const presetLines = Object.entries(presetEnv).map(([k, v]) => `${k}=${quoteIfNeeded(v)}`);
 
     writeFileSync(join(runDir, '.env'), [
-      `LLM_PROVIDER=${llmProvider}`,
-      `LLM_MODEL=${llmModel}`,
-      `LLM_API_KEY=${llmApiKey}`,
-      `LLM_BASE_URL=${llmBaseUrl}`,
+      `LLM_PROVIDER=${quoteIfNeeded(llmProvider)}`,
+      `LLM_MODEL=${quoteIfNeeded(llmModel)}`,
+      `LLM_API_KEY=${quoteIfNeeded(llmApiKey)}`,
+      `LLM_BASE_URL=${quoteIfNeeded(llmBaseUrl)}`,
       ...presetLines,
     ].join('\n'));
 

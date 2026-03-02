@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { AIHostAgent } from './ai-host-agent'
-import { TaskStore } from '../task/store'
+import { AIHostAgent } from './ai-host-agent.js'
+import { TaskStore } from '../task/store.js'
 import { tmpdir } from 'os'
 import { join } from 'path'
 

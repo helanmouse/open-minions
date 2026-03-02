@@ -1,4 +1,4 @@
-import { ContainerRegistry, ContainerHandle } from '../container/registry'
+import { ContainerRegistry, ContainerHandle } from '../container/registry.js'
 
 /**
  * Default container resource limits

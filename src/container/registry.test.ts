@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ContainerRegistry } from './registry'
+import { ContainerRegistry, ContainerHandle } from './registry.js'
 
 describe('ContainerRegistry', () => {
   let registry: ContainerRegistry
@@ -96,10 +96,10 @@ describe('ContainerRegistry', () => {
     })
 
     registry.update('c1', {
-      id: 'should-be-ignored' as any,
-      createdAt: 999 as any,
+      id: 'should-be-ignored',
+      createdAt: 999,
       status: 'done'
-    })
+    } as any)
 
     const container = registry.get('c1')
     expect(container?.id).toBe('c1')
@@ -130,7 +130,7 @@ describe('ContainerRegistry', () => {
 
     const all = registry.list()
     expect(all).toHaveLength(3)
-    expect(all.map(c => c.id).sort()).toEqual(['c1', 'c2', 'c3'])
+    expect(all.map((c: ContainerHandle) => c.id).sort()).toEqual(['c1', 'c2', 'c3'])
   })
 
   it('should find containers older than specified hours', () => {

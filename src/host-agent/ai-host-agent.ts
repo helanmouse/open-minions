@@ -1,23 +1,10 @@
-import { PromptParser } from '../parser/prompt-parser'
-import { ContainerRegistry } from '../container/registry'
-import { ContainerManagementTools } from '../tools/container-tools'
-import { TaskStore } from '../task/store'
-import type { TaskRequest } from '../types/shared'
-
-/**
- * Minimal LLM interface for AI orchestrator.
- */
-export interface LLMAdapter {
-  chat(messages: Array<{ role: string; content: string }>, tools: unknown[]): Promise<{ content: string }>
-}
-
-/**
- * Minimal Sandbox interface for AI orchestrator.
- */
-export interface SandboxLike {
-  start(config: any): Promise<{ containerId: string }>
-  stop(containerId: string): Promise<void>
-}
+import { PromptParser } from '../parser/prompt-parser.js'
+import { ContainerRegistry } from '../container/registry.js'
+import { ContainerManagementTools } from '../tools/container-tools.js'
+import { TaskStore } from '../task/store.js'
+import type { TaskRequest } from '../types/shared.js'
+import type { LLMAdapter } from '../llm/types.js'
+import type { DockerSandbox } from '../sandbox/docker.js'
 
 /**
  * Configuration options for AIHostAgent.
@@ -26,11 +13,25 @@ export interface AIHostAgentOptions {
   /** LLM adapter for prompt parsing */
   llm: LLMAdapter
   /** Sandbox for container execution */
-  sandbox: SandboxLike
+  sandbox: DockerSandbox
   /** Task store for persistence */
   store: TaskStore
   /** Minion home directory */
   minionHome: string
+}
+
+/**
+ * Options for task execution.
+ */
+export interface RunOptions {
+  /** Repository path or URL (overrides current directory) */
+  repo?: string
+  /** Docker image to use (overrides strategy) */
+  image?: string
+  /** Timeout in minutes (overrides strategy) */
+  timeout?: number
+  /** Run in background (detached mode) */
+  detach?: boolean
 }
 
 /**
@@ -69,45 +70,58 @@ export class AIHostAgent {
   /**
    * Execute a task from a natural language prompt.
    * @param userPrompt The user's natural language prompt
+   * @param options Optional execution options (repo, image, timeout, detach)
    * @returns Task execution result
    */
-  async run(userPrompt: string): Promise<TaskResult> {
+  async run(userPrompt: string, options?: RunOptions): Promise<TaskResult> {
     const startTime = Date.now()
 
     // 1. Parse prompt to extract task and strategy
     const { parsedTask, strategy } = await this.parser.parse(userPrompt)
 
-    // 2. Create task request
+    // 2. Determine repository path and type
+    const repo = options?.repo || process.cwd()
+    const repoType = options?.repo && (options.repo.startsWith('http://') || options.repo.startsWith('https://') || options.repo.startsWith('git@'))
+      ? 'remote' as const
+      : 'local' as const
+
+    // 3. Override strategy with CLI options (CLI options have higher priority)
+    const finalImage = options?.image || strategy.customImage || 'minion-base'
+    const finalTimeout = options?.timeout ? options.timeout * 60 : strategy.timeout // Convert minutes to seconds
+
+    // 4. Create task request
     const taskId = this.generateTaskId()
     const request: TaskRequest = {
       id: taskId,
       description: userPrompt,
       parsedTask,
       strategy,
-      repo: process.cwd(),
-      repoType: 'local',
+      repo,
+      repoType,
       branch: `minion/${taskId}`,
       baseBranch: 'main',
       push: false,
       maxIterations: 50,
-      timeout: strategy.timeout,
+      timeout: finalTimeout,
       created_at: new Date().toISOString()
     }
 
     this.options.store.create(request)
 
-    // 3. Execute task
+    // 5. Execute task
     let containerId: string | undefined
     try {
       const container = await this.containerTools.start_container({
-        image: strategy.customImage || 'minion-base',
+        image: finalImage,
         memory: strategy.memory,
         cpus: strategy.cpus
       })
       containerId = container.id
 
       // Update container with taskId
-      this.registry.update(containerId, { taskId })
+      if (containerId) {
+        this.registry.update(containerId, { taskId })
+      }
 
       // TODO: Wait for container completion, apply patches, etc.
       // For now, just return success
@@ -117,7 +131,7 @@ export class AIHostAgent {
       return {
         taskId,
         status: 'completed',
-        containers: [{ id: containerId }],
+        containers: containerId ? [{ id: containerId }] : [],
         patches: { applied: 0, failed: 0, conflicts: [] },
         changes: { branch: request.branch, commits: 0, filesChanged: [] },
         stats: { duration, llmCalls: 1, tokensUsed: 0, retries: 0 },

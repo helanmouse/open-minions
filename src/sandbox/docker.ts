@@ -133,4 +133,14 @@ export class DockerSandbox implements Sandbox {
       },
     };
   }
+
+  async stop(containerId: string): Promise<void> {
+    try {
+      const container = this.docker.getContainer(containerId);
+      await container.stop({ t: 10 });
+      await container.remove();
+    } catch (error) {
+      // Ignore errors if container doesn't exist or already stopped
+    }
+  }
 }

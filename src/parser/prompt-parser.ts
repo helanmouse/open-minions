@@ -1,4 +1,6 @@
-import { ExecutionStrategy, getDefaultStrategy } from '../types/strategy'
+import { ExecutionStrategy, getDefaultStrategy } from '../types/strategy.js'
+import type { LLMAdapter } from '../llm/types.js'
+import type { Message } from '../types/shared.js'
 
 /**
  * Result of parsing a user prompt.
@@ -8,13 +10,6 @@ export interface ParsedPrompt {
   parsedTask: string
   /** Extracted execution strategy */
   strategy: ExecutionStrategy
-}
-
-/**
- * Minimal LLM interface for prompt parsing.
- */
-export interface LLMAdapter {
-  chat(messages: Array<{ role: string; content: string }>, tools: unknown[]): Promise<{ content: string }>
 }
 
 /**
@@ -65,18 +60,24 @@ export class PromptParser {
    */
   async parse(userPrompt: string): Promise<ParsedPrompt> {
     try {
-      const messages = [
+      const messages: Message[] = [
         { role: 'system', content: PARSER_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt }
       ]
 
-      const response = await this.llm.chat(messages, [])
+      // Collect LLM response from AsyncIterable
+      let responseContent = ''
+      for await (const event of this.llm.chat(messages, [])) {
+        if (event.type === 'text_delta') {
+          responseContent += event.content
+        }
+      }
 
       // Extract JSON from response (handle markdown code blocks)
       let parsed: any
       try {
         // Try to find JSON in response (may be wrapped in markdown)
-        const jsonMatch = response.content.match(/\{[\s\S]*\}/)
+        const jsonMatch = responseContent.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
           parsed = JSON.parse(jsonMatch[0])
         } else {

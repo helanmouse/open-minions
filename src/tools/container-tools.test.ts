@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ContainerManagementTools } from './container-tools'
-import { ContainerRegistry } from '../container/registry'
+import { ContainerManagementTools } from './container-tools.js'
+import { ContainerRegistry } from '../container/registry.js'
 
 describe('ContainerManagementTools', () => {
   let tools: ContainerManagementTools

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { PromptParser } from './prompt-parser'
-import { getDefaultStrategy } from '../types/strategy'
+import { PromptParser } from './prompt-parser.js'
+import { getDefaultStrategy } from '../types/strategy.js'
 
 describe('PromptParser', () => {
   let parser: PromptParser

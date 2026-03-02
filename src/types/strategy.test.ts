@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ExecutionStrategy, getDefaultStrategy } from './strategy'
+import { ExecutionStrategy, getDefaultStrategy } from './strategy.js'
 
 describe('ExecutionStrategy', () => {
   it('should provide default strategy with all fields', () => {
