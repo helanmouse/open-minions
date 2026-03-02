@@ -1,6 +1,12 @@
 import { ContainerRegistry, ContainerHandle } from '../container/registry'
 
 /**
+ * Default container resource limits
+ */
+const DEFAULT_MEMORY = '4g'
+const DEFAULT_CPUS = 2
+
+/**
  * Configuration for starting a container.
  */
 export interface ContainerConfig {
@@ -41,8 +47,8 @@ export class ContainerManagementTools {
   async start_container(config: ContainerConfig): Promise<ContainerHandle> {
     const result = await this.sandbox.start({
       image: config.image,
-      memory: config.memory || '4g',
-      cpus: config.cpus || 2,
+      memory: config.memory || DEFAULT_MEMORY,
+      cpus: config.cpus || DEFAULT_CPUS,
       env: config.env || {}
     })
 
@@ -55,7 +61,18 @@ export class ContainerManagementTools {
       metadata: {}
     }
 
-    this.registry.register(container)
+    try {
+      this.registry.register(container)
+    } catch (error) {
+      // Cleanup: stop the container if registration fails
+      try {
+        await this.sandbox.stop(result.containerId)
+      } catch (stopError) {
+        // Log but don't throw - we want to propagate the original error
+      }
+      throw error
+    }
+
     return container
   }
 
@@ -64,8 +81,20 @@ export class ContainerManagementTools {
    * @param containerId The container ID
    */
   async stop_container(containerId: string): Promise<void> {
-    await this.sandbox.stop(containerId)
+    // Validate container exists
+    const container = this.registry.get(containerId)
+    if (!container) {
+      throw new Error(`Container ${containerId} not found`)
+    }
 
+    try {
+      await this.sandbox.stop(containerId)
+    } catch (error) {
+      // Log error but don't throw - we still want to update registry
+      // In production, this would use a proper logger
+    }
+
+    // Always update registry even if stop fails
     this.registry.update(containerId, {
       status: 'done'
     })
@@ -77,9 +106,22 @@ export class ContainerManagementTools {
    * @param reason Reason for preservation
    */
   async preserve_container(containerId: string, reason: string): Promise<void> {
+    // Validate container exists
+    const container = this.registry.get(containerId)
+    if (!container) {
+      throw new Error(`Container ${containerId} not found`)
+    }
+
+    // Stop the container before marking as preserved
+    await this.sandbox.stop(containerId)
+
+    // Merge metadata instead of replacing
     this.registry.update(containerId, {
       status: 'preserved',
-      metadata: { preserveReason: reason }
+      metadata: {
+        ...container.metadata,
+        preserveReason: reason
+      }
     })
   }
 
