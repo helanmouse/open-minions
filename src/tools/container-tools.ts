@@ -36,10 +36,9 @@ export class ContainerManagementTools {
   /**
    * Start a new container and register it.
    * @param config Container configuration
-   * @param taskId Task ID this container is executing
    * @returns The registered container handle
    */
-  async start_container(config: ContainerConfig, taskId: string): Promise<ContainerHandle> {
+  async start_container(config: ContainerConfig): Promise<ContainerHandle> {
     const result = await this.sandbox.start({
       image: config.image,
       memory: config.memory || '4g',
@@ -49,7 +48,7 @@ export class ContainerManagementTools {
 
     const container: ContainerHandle = {
       id: result.containerId,
-      taskId: taskId,
+      taskId: '', // Will be set by orchestrator
       status: 'running',
       createdAt: Date.now(),
       updatedAt: Date.now(),
