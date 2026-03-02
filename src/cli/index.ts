@@ -50,6 +50,28 @@ export function parseCliArgs(argv: string[]): CliArgs {
   return result;
 }
 
+/**
+ * Detect if AI mode should be used based on prompt keywords.
+ * @param description User's task description
+ * @returns true if AI mode should be used
+ */
+function shouldUseAIMode(description: string): boolean {
+  const aiKeywords = [
+    'preserve', 'snapshot', 'parallel', 'retry',
+    '保留', '快照', '并行', '重试',
+    'auto-apply', 'auto apply',
+    'times in parallel', 'keep container'
+  ];
+
+  const lowerDesc = description.toLowerCase();
+  const hasAIKeyword = aiKeywords.some(kw => lowerDesc.includes(kw.toLowerCase()));
+
+  // Allow forcing AI mode via environment variable
+  const forceAI = process.env.MINION_AI_MODE === 'true';
+
+  return hasAIKeyword || forceAI;
+}
+
 const program = new Command();
 
 program
@@ -74,41 +96,74 @@ program
     const llm = createLLMAdapter(config.llm);
     const sandbox = new DockerSandbox(minionHome);
     const store = new TaskStore(join(minionHome, 'tasks.json'));
-    const agent = new HostAgent({ llm, sandbox, store, minionHome, config: minionConfig });
 
-    const taskId = await agent.prepare(description, {
-      repo: opts.repo,
-      image: opts.image,
-      yes: opts.yes,
-      detach: opts.d,
-      timeout: Number(opts.timeout),
-    });
+    // Check if AI mode should be used
+    const useAI = shouldUseAIMode(description);
 
-    const task = store.get(taskId)!;
-    if (!opts.yes) {
-      console.log(`\nTarget: ${task.request.repo} (${task.request.repoType})`);
-      console.log(`Image:  ${task.request.image || 'minion-base'}`);
-      console.log(`Task:   ${task.request.description}`);
-      console.log(`\nPress Enter to start or Ctrl+C to abort`);
-      await new Promise<void>(resolve => {
-        process.stdin.once('data', () => resolve());
+    if (useAI) {
+      // New path: AI Orchestrator
+      console.log('🤖 [AI Mode] Using AI Orchestrator');
+
+      const { AIHostAgent } = await import('../host-agent/ai-host-agent.js');
+      const aiAgent = new AIHostAgent({
+        llm,
+        sandbox,
+        store,
+        minionHome
       });
-    }
 
-    console.log(`Task ${taskId} starting...`);
-    await agent.run(taskId, { detach: opts.d, timeout: Number(opts.timeout) });
+      const result = await aiAgent.run(description);
 
-    const final = store.get(taskId)!;
-    if (final.status === 'done') {
-      console.log(`\nTask ${taskId} completed.`);
-      if (final.result) {
-        console.log(`Branch: ${final.result.branch}`);
-        console.log(`Commits: ${final.result.commits}`);
-        console.log(`Summary: ${final.result.summary}`);
+      if (result.status === 'completed') {
+        console.log(`✓ Task completed: ${result.summary}`);
+        if (result.containers.length > 0) {
+          console.log(`  Containers: ${result.containers.map(c => c.id).join(', ')}`);
+        }
+      } else {
+        console.error(`✗ Task failed: ${result.error}`);
+        if (result.containers.some(c => c.preserved)) {
+          console.log(`  Container preserved for debugging`);
+        }
+        process.exit(1);
       }
     } else {
-      console.error(`\nTask ${taskId} failed: ${final.error}`);
-      process.exit(1);
+      // Old path: Legacy agent
+      const agent = new HostAgent({ llm, sandbox, store, minionHome, config: minionConfig });
+
+      const taskId = await agent.prepare(description, {
+        repo: opts.repo,
+        image: opts.image,
+        yes: opts.yes,
+        detach: opts.d,
+        timeout: Number(opts.timeout),
+      });
+
+      const task = store.get(taskId)!;
+      if (!opts.yes) {
+        console.log(`\nTarget: ${task.request.repo} (${task.request.repoType})`);
+        console.log(`Image:  ${task.request.image || 'minion-base'}`);
+        console.log(`Task:   ${task.request.description}`);
+        console.log(`\nPress Enter to start or Ctrl+C to abort`);
+        await new Promise<void>(resolve => {
+          process.stdin.once('data', () => resolve());
+        });
+      }
+
+      console.log(`Task ${taskId} starting...`);
+      await agent.run(taskId, { detach: opts.d, timeout: Number(opts.timeout) });
+
+      const final = store.get(taskId)!;
+      if (final.status === 'done') {
+        console.log(`\nTask ${taskId} completed.`);
+        if (final.result) {
+          console.log(`Branch: ${final.result.branch}`);
+          console.log(`Commits: ${final.result.commits}`);
+          console.log(`Summary: ${final.result.summary}`);
+        }
+      } else {
+        console.error(`\nTask ${taskId} failed: ${final.error}`);
+        process.exit(1);
+      }
     }
   });
 
