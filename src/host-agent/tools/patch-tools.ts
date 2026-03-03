@@ -1,6 +1,6 @@
 import { readdirSync } from 'fs'
 import { join } from 'path'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import type { ContainerRegistry } from '../../container/registry.js'
 
 interface ListPatchesArgs {
@@ -82,11 +82,16 @@ export function createApplyPatchesTool() {
 
       for (const patch of args.patches) {
         try {
-          execSync(`git am ${patch}`, { stdio: 'pipe' })
+          execFileSync('git', ['am', patch], {
+            stdio: 'pipe',
+            cwd: process.cwd(),
+            timeout: 60_000,
+            maxBuffer: 1024 * 1024
+          })
           applied++
-        } catch (error: any) {
+        } catch (error) {
           failed++
-          if (error.message.includes('conflict')) {
+          if (error instanceof Error && error.message.includes('conflict')) {
             conflicts.push(patch)
           }
         }
