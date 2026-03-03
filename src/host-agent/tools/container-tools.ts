@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import type { DockerSandbox } from '../../sandbox/docker.js'
 import type { ContainerRegistry } from '../../container/registry.js'
 
@@ -20,6 +22,14 @@ interface GetContainerStatusArgs {
 interface GetContainerStatusResult {
   status: string
   exitCode?: number
+}
+
+interface GetContainerJournalArgs {
+  containerId: string
+}
+
+interface GetContainerJournalResult {
+  journal: string
 }
 
 export function createStartContainerTool(
@@ -120,6 +130,46 @@ export function createGetContainerStatusTool(
       return {
         status: container.status,
         exitCode: container.metadata.exitCode ?? undefined
+      }
+    }
+  }
+}
+
+export function createGetContainerJournalTool(
+  sandbox: DockerSandbox,
+  registry: ContainerRegistry
+) {
+  return {
+    name: 'get_container_journal',
+    description: 'Get the journal (execution log) from sandbox agent. CRITICAL: Always read this after container completes to understand what happened.',
+    parameters: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID'
+        }
+      },
+      required: ['containerId']
+    },
+    execute: async (args: GetContainerJournalArgs): Promise<GetContainerJournalResult> => {
+      const container = registry.get(args.containerId)
+      if (!container) {
+        throw new Error(`Container ${args.containerId} not found`)
+      }
+
+      // Read journal from container's run directory
+      const runDir = container.metadata.runDir
+      if (!runDir) {
+        throw new Error('Container run directory not found')
+      }
+
+      try {
+        const journalPath = join(runDir, 'journal.md')
+        const journal = readFileSync(journalPath, 'utf-8')
+        return { journal }
+      } catch (error: any) {
+        return { journal: `Error reading journal: ${error.message}` }
       }
     }
   }
