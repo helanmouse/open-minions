@@ -40,20 +40,28 @@ export function createCreateBranchTool() {
     execute: async (args: CreateBranchArgs): Promise<CreateBranchResult> => {
       const baseBranch = args.baseBranch || 'main'
 
+      // Validate branch name
+      if (!/^[a-zA-Z0-9/_-]+$/.test(args.branchName)) {
+        throw new Error(`Invalid branch name: ${args.branchName}`)
+      }
+
       try {
         execFileSync('git', ['checkout', baseBranch], {
           stdio: 'pipe',
           cwd: process.cwd(),
-          timeout: 30_000
+          timeout: 30_000,
+          maxBuffer: 1024 * 1024
         })
         execFileSync('git', ['checkout', '-b', args.branchName], {
           stdio: 'pipe',
           cwd: process.cwd(),
-          timeout: 30_000
+          timeout: 30_000,
+          maxBuffer: 1024 * 1024
         })
         return { success: true, branch: args.branchName }
-      } catch (error: any) {
-        throw new Error(`Failed to create branch: ${error.message}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new Error(`Failed to create branch: ${message}`)
       }
     }
   }
@@ -87,11 +95,13 @@ export function createPushChangesTool() {
         execFileSync('git', gitArgs, {
           stdio: 'pipe',
           cwd: process.cwd(),
-          timeout: 60_000
+          timeout: 60_000,
+          maxBuffer: 1024 * 1024
         })
         return { success: true }
-      } catch (error: any) {
-        throw new Error(`Failed to push: ${error.message}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new Error(`Failed to push: ${message}`)
       }
     }
   }
