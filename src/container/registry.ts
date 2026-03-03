@@ -23,6 +23,8 @@ export interface ContainerHandle {
     exitCode?: number
     /** Run directory path for container execution */
     runDir?: string
+    /** Error message if container failed unexpectedly */
+    error?: string
   }
   /** Timestamp when container was created (milliseconds since epoch) */
   createdAt: number

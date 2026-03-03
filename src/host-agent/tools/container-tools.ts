@@ -95,7 +95,8 @@ export function createStartContainerTool(
               status: 'failed',
               metadata: {
                 exitCode: -1,
-                runDir
+                runDir,
+                error: error instanceof Error ? error.message : String(error)
               }
             })
           })
