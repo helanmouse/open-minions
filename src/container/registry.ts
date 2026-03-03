@@ -21,6 +21,8 @@ export interface ContainerHandle {
     snapshotId?: string
     /** Exit code from container execution */
     exitCode?: number
+    /** Run directory path for container execution */
+    runDir?: string
   }
   /** Timestamp when container was created (milliseconds since epoch) */
   createdAt: number

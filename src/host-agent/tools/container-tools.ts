@@ -168,8 +168,8 @@ export function createGetContainerJournalTool(
         const journalPath = join(runDir, 'journal.md')
         const journal = readFileSync(journalPath, 'utf-8')
         return { journal }
-      } catch (error: any) {
-        return { journal: `Error reading journal: ${error.message}` }
+      } catch (error) {
+        return { journal: `Error reading journal: ${error instanceof Error ? error.message : String(error)}` }
       }
     }
   }
