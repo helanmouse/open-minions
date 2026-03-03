@@ -82,23 +82,34 @@ export function createStartContainerTool(
         })
 
         // Background monitoring (non-blocking)
+        // Get current metadata to preserve existing properties
+        const currentContainer = registry.get(handle.containerId)
+        const currentMetadata = currentContainer?.metadata || {}
+
         handle.wait()
           .then(({ exitCode }) => {
-            registry.update(handle.containerId, {
+            const updated = registry.update(handle.containerId, {
               status: exitCode === 0 ? 'done' : 'failed',
-              metadata: { exitCode, runDir }
+              metadata: { ...currentMetadata, exitCode, runDir }
             })
+            if (!updated) {
+              console.error(`Failed to update container ${handle.containerId} status after completion`)
+            }
           })
           .catch((error) => {
             // Handle unexpected errors (container killed, Docker daemon crash, etc.)
-            registry.update(handle.containerId, {
+            const updated = registry.update(handle.containerId, {
               status: 'failed',
               metadata: {
+                ...currentMetadata,
                 exitCode: -1,
                 runDir,
                 error: error instanceof Error ? error.message : String(error)
               }
             })
+            if (!updated) {
+              console.error(`Failed to update container ${handle.containerId} status after monitoring error`)
+            }
           })
 
         const result = {
