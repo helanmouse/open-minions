@@ -7,9 +7,11 @@ import type { TaskStore } from '../task/store.js'
 
 // Mock the Agent class to avoid actual LLM calls
 let mockPrompt: any
+let mockSubscribe: any
 vi.mock('@mariozechner/pi-agent-core', () => ({
   Agent: class MockAgent {
     prompt = mockPrompt
+    subscribe = mockSubscribe
   }
 }))
 
@@ -26,6 +28,9 @@ describe('HostAgent', () => {
       role: 'assistant',
       content: 'Test response'
     })
+
+    // Reset mock subscribe function
+    mockSubscribe = vi.fn()
 
     // Mock Model<any> - needs to be a proper Model interface
     mockLLM = {
@@ -47,7 +52,7 @@ describe('HostAgent', () => {
       register: vi.fn().mockResolvedValue(undefined),
       get: vi.fn().mockResolvedValue({ id: 'test123', status: 'running' }),
       update: vi.fn().mockResolvedValue(undefined),
-      list: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockReturnValue([]),  // Changed from mockResolvedValue to mockReturnValue
       remove: vi.fn().mockResolvedValue(undefined)
     } as any
 
@@ -84,7 +89,7 @@ describe('HostAgent', () => {
     expect(result.stats).toBeDefined()
     expect(result.stats.duration).toBeGreaterThanOrEqual(0)
     expect(result.journal).toBe('')
-    expect(result.summary).toBe('Not implemented yet')
+    expect(result.summary).toBe('Task completed - Agent orchestrated execution via tools')
 
     // Verify mock was called with correct prompt
     expect(mockPrompt).toHaveBeenCalledWith('修复 bug')

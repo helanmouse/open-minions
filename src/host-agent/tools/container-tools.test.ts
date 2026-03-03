@@ -29,9 +29,17 @@ describe('Container Tools', () => {
 
   describe('start_container', () => {
     it('should start container and return ID', async () => {
-      vi.mocked(mockSandbox.start).mockResolvedValue({ containerId: 'abc123' })
+      const mockHandle = {
+        containerId: 'abc123',
+        logs: vi.fn(),
+        wait: vi.fn(),
+        stop: vi.fn()
+      }
+      vi.mocked(mockSandbox.start).mockResolvedValue(mockHandle)
 
-      const tool = createStartContainerTool(mockSandbox, mockRegistry)
+      const getRunDir = () => '/tmp/test-run'
+      const getRepoPath = () => '/tmp/test-repo'
+      const tool = createStartContainerTool(mockSandbox, mockRegistry, getRunDir, getRepoPath)
       const result = await tool.execute('tool-call-1', {
         image: 'minion-base',
         taskDescription: 'test task'
@@ -50,9 +58,17 @@ describe('Container Tools', () => {
     })
 
     it('should pass memory and cpus options', async () => {
-      vi.mocked(mockSandbox.start).mockResolvedValue({ containerId: 'abc123' })
+      const mockHandle = {
+        containerId: 'abc123',
+        logs: vi.fn(),
+        wait: vi.fn(),
+        stop: vi.fn()
+      }
+      vi.mocked(mockSandbox.start).mockResolvedValue(mockHandle)
 
-      const tool = createStartContainerTool(mockSandbox, mockRegistry)
+      const getRunDir = () => '/tmp/test-run'
+      const getRepoPath = () => '/tmp/test-repo'
+      const tool = createStartContainerTool(mockSandbox, mockRegistry, getRunDir, getRepoPath)
       await tool.execute('tool-call-2', {
         image: 'minion-python',
         memory: '8g',
@@ -69,7 +85,9 @@ describe('Container Tools', () => {
     })
 
     it('should reject invalid image names', async () => {
-      const tool = createStartContainerTool(mockSandbox, mockRegistry)
+      const getRunDir = () => '/tmp/test-run'
+      const getRepoPath = () => '/tmp/test-repo'
+      const tool = createStartContainerTool(mockSandbox, mockRegistry, getRunDir, getRepoPath)
 
       await expect(
         tool.execute('tool-call-3', {
@@ -84,7 +102,9 @@ describe('Container Tools', () => {
     it('should handle sandbox.start failure', async () => {
       vi.mocked(mockSandbox.start).mockRejectedValue(new Error('Docker daemon not running'))
 
-      const tool = createStartContainerTool(mockSandbox, mockRegistry)
+      const getRunDir = () => '/tmp/test-run'
+      const getRepoPath = () => '/tmp/test-repo'
+      const tool = createStartContainerTool(mockSandbox, mockRegistry, getRunDir, getRepoPath)
 
       await expect(
         tool.execute('tool-call-4', {
@@ -121,7 +141,7 @@ describe('Container Tools', () => {
       vi.mocked(mockRegistry.get).mockReturnValue({
         id: 'abc123',
         taskId: 'abc123',
-        status: 'completed',
+        status: 'done',
         createdAt: Date.now(),
         updatedAt: Date.now(),
         metadata: { exitCode: 0 }
@@ -132,12 +152,12 @@ describe('Container Tools', () => {
         containerId: 'abc123'
       })
 
-      expect(result.details.status).toBe('completed')
+      expect(result.details.status).toBe('done')
       expect(result.details.exitCode).toBe(0)
     })
 
     it('should throw error for unknown container', async () => {
-      vi.mocked(mockRegistry.get).mockReturnValue(undefined)
+      vi.mocked(mockRegistry.get).mockReturnValue(null)
 
       const tool = createGetContainerStatusTool(mockSandbox, mockRegistry)
 
@@ -151,7 +171,7 @@ describe('Container Tools', () => {
 
   describe('get_container_journal', () => {
     it('should return error when container not found', async () => {
-      vi.mocked(mockRegistry.get).mockReturnValue(undefined)
+      vi.mocked(mockRegistry.get).mockReturnValue(null)
 
       const tool = createGetContainerJournalTool(mockSandbox, mockRegistry)
 

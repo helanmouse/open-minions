@@ -36,7 +36,9 @@ const GetContainerJournalSchema = Type.Object({
 
 export function createStartContainerTool(
   sandbox: DockerSandbox,
-  registry: ContainerRegistry
+  registry: ContainerRegistry,
+  getRunDir: () => string,
+  getRepoPath: () => string
 ): AgentTool<typeof StartContainerSchema> {
   return {
     name: 'start_container',
@@ -51,16 +53,20 @@ export function createStartContainerTool(
           throw new Error(`Invalid image name: ${args.image}. Must start with alphanumeric and contain only alphanumeric characters, dots, hyphens, and underscores.`)
         }
 
+        const runDir = getRunDir()
+        const repoPath = getRepoPath()
+
+        if (!runDir) {
+          throw new Error('Run directory not initialized. This is an internal error.')
+        }
+
         const config = {
           image: args.image,
-          repoPath: process.cwd(),
-          runDir: `/tmp/minion-run-${Date.now()}`,
+          repoPath,
+          runDir,
           memory: args.memory || '4g',
           cpus: args.cpus || 2,
-          network: 'bridge',
-          env: {
-            TASK_DESCRIPTION: args.taskDescription
-          }
+          network: 'bridge'
         }
 
         const handle = await sandbox.start(config)
@@ -71,7 +77,7 @@ export function createStartContainerTool(
           status: 'running',
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          metadata: { runDir: config.runDir }
+          metadata: { runDir }
         })
 
         const result = {
