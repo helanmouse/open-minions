@@ -16,8 +16,8 @@ Give it a task in natural language — fix a bug, implement a feature, patch a f
 User: "Fix login page crash when email is empty"
         │
         ▼
-   Host Agent (pi-ai LLM)
-        │  Parse task → Analyze project → Prepare repo
+   Host Agent (pi-agent-core Agent)
+        │  Tool-based orchestration → Analyze project → Select image
         │
         ▼
    Docker Sandbox (isolated container)
@@ -35,17 +35,19 @@ User: "Fix login page crash when email is empty"
 
 **V3 Architecture with pi-mono Integration:**
 
-- **Host Agent** — Runs on your machine using `@mariozechner/pi-ai` for LLM calls
+- **Host Agent** — Runs on your machine using `@mariozechner/pi-agent-core` Agent class with tool-based orchestration
 - **Sandbox Agent** — Runs in Docker container using `@mariozechner/pi-agent-core` Agent class
 - **Tools** — Inlined coding tools (bash, read, edit, write) + custom deliver_patch
+- **Tool-Based Orchestration** — Agent decides which tools to call based on natural language instructions
 - **Offline Runtime** — pi-runtime pre-built on host, mounted to containers (no npm install inside)
 - **Container Presets** — Pre-configured git identity, timezone, locale via `~/.minion/config.json`
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Host Agent (pi-ai LLM)                      │
-│  Parse → Analyze → Launch Docker → Apply    │
-│  patches → Push                              │
+│  Host Agent (pi-agent-core Agent)           │
+│  Tool-based orchestration:                  │
+│  Analyze → Select image → Launch Docker →  │
+│  Apply patches → Push                       │
 └──────────────────┬──────────────────────────┘
                    │ docker run (bootstrap.sh)
 ┌──────────────────▼──────────────────────────┐
@@ -179,6 +181,21 @@ MINION_AI_MODE=true minion run "Any task description"
 - English: `preserve`, `snapshot`, `parallel`, `retry`, `auto-apply`, `keep container`
 - Chinese: `保留`, `快照`, `并行`, `重试`, `自动应用`
 
+### Advanced Usage
+
+The Host Agent understands natural language instructions:
+
+```bash
+# Analyze project and select appropriate image
+minion run "分析项目，选择合适的镜像，修复 bug"
+
+# Preserve container on failure
+minion run "添加功能，如果失败保留容器用于调试"
+
+# Create PR after success
+minion run "修复 lint 错误，测试通过后创建 PR"
+```
+
 ### Project Configuration
 
 See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for detailed configuration options including:
@@ -221,8 +238,8 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 用户: "修复登录页面空邮箱时的崩溃问题"
         │
         ▼
-   Host Agent（pi-ai LLM）
-        │  解析任务 → 分析项目 → 准备仓库
+   Host Agent（pi-agent-core Agent）
+        │  基于工具的编排 → 分析项目 → 选择镜像
         │
         ▼
    Docker 沙箱（隔离容器）
@@ -240,17 +257,19 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 
 **V3 架构集成 pi-mono：**
 
-- **Host Agent** — 在本机运行，使用 `@mariozechner/pi-ai` 进行 LLM 调用
+- **Host Agent** — 在本机运行，使用 `@mariozechner/pi-agent-core` Agent 类，基于工具的编排
 - **Sandbox Agent** — 在 Docker 容器内运行，使用 `@mariozechner/pi-agent-core` Agent 类
 - **工具** — 内置编码工具（bash、read、edit、write）+ 自定义 deliver_patch
+- **基于工具的编排** — Agent 根据自然语言指令决定调用哪些工具
 - **离线运行时** — pi-runtime 在宿主机预构建，挂载到容器内
 - **容器预设** — 预配置 git 身份、时区、语言环境，可通过 `~/.minion/config.json` 自定义
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Host Agent (pi-ai LLM)                      │
-│  解析 → 分析 → 启动 Docker → 应用补丁 →     │
-│  推送                                         │
+│  Host Agent (pi-agent-core Agent)           │
+│  基于工具的编排：                            │
+│  分析 → 选择镜像 → 启动 Docker → 应用补丁  │
+│  → 推送                                      │
 └──────────────────┬──────────────────────────┘
                    │ docker run (bootstrap.sh)
 ┌──────────────────▼──────────────────────────┐
@@ -381,6 +400,21 @@ MINION_AI_MODE=true minion run "任意任务描述"
 **AI 模式关键词：**
 - 中文：`保留`、`快照`、`并行`、`重试`、`自动应用`
 - 英文：`preserve`、`snapshot`、`parallel`、`retry`、`auto-apply`、`keep container`
+
+### 高级用法
+
+Host Agent 能理解自然语言指令：
+
+```bash
+# 分析项目并选择合适的镜像
+minion run "分析项目，选择合适的镜像，修复 bug"
+
+# 失败时保留容器
+minion run "添加功能，如果失败保留容器用于调试"
+
+# 成功后创建 PR
+minion run "修复 lint 错误，测试通过后创建 PR"
+```
 
 ### 配置说明
 
