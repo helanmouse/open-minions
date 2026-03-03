@@ -69,7 +69,16 @@ program
     const description = descParts.join(' ');
     const minionHome = join(homedir(), '.minion');
     const minionConfig = new MinionsConfig(process.cwd(), minionHome);
-    const llm = await minionConfig.getModel();
+
+    let llm;
+    try {
+      llm = await minionConfig.getModel();
+    } catch (error: any) {
+      console.error(`Failed to load LLM configuration: ${error.message}`);
+      console.log('\nRun "minion setup" to configure your LLM provider.');
+      process.exit(1);
+    }
+
     const sandbox = new DockerSandbox(minionHome);
     const store = new TaskStore(join(minionHome, 'tasks.json'));
     const registry = new ContainerRegistry();
@@ -87,16 +96,20 @@ program
 
     // Show task info and confirmation if needed
     if (!opts.yes) {
-      console.log(`\nTarget: ${opts.repo || process.cwd()}`);
-      console.log(`Image:  ${opts.image || 'minion-base'}`);
-      console.log(`Task:   ${description}`);
+      console.log(`\nTask:   ${description}`);
       console.log(`\nPress Enter to start or Ctrl+C to abort`);
       await new Promise<void>(resolve => {
         process.stdin.once('data', () => resolve());
       });
     }
 
-    const result = await hostAgent.run(description);
+    let result;
+    try {
+      result = await hostAgent.run(description);
+    } catch (error: any) {
+      console.error(`\nFailed to execute task: ${error.message}`);
+      process.exit(1);
+    }
 
     if (result.status === 'completed') {
       console.log(`\n✓ Task completed: ${result.summary}`);
