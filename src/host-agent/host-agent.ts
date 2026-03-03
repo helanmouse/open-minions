@@ -66,6 +66,7 @@ export class HostAgent {
         summary: 'Not implemented yet'
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
       return {
         taskId,
         status: 'failed',
@@ -74,7 +75,8 @@ export class HostAgent {
         changes: { branch: '', commits: 0, filesChanged: [] },
         stats: { duration: Date.now() - startTime, llmCalls: 0, tokensUsed: 0 },
         journal: '',
-        summary: `Error: ${error instanceof Error ? error.message : String(error)}`
+        summary: `Error: ${errorMessage}`,
+        error: errorMessage
       }
     }
   }

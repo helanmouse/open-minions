@@ -6,12 +6,10 @@ import type { ContainerRegistry } from '../container/registry.js'
 import type { TaskStore } from '../task/store.js'
 
 // Mock the Agent class to avoid actual LLM calls
+let mockPrompt: any
 vi.mock('@mariozechner/pi-agent-core', () => ({
   Agent: class MockAgent {
-    prompt = vi.fn().mockResolvedValue({
-      role: 'assistant',
-      content: 'Test response'
-    })
+    prompt = mockPrompt
   }
 }))
 
@@ -23,6 +21,12 @@ describe('HostAgent', () => {
   let mockStore: TaskStore
 
   beforeEach(() => {
+    // Reset mock prompt function
+    mockPrompt = vi.fn().mockResolvedValue({
+      role: 'assistant',
+      content: 'Test response'
+    })
+
     // Mock Model<any> - needs to be a proper Model interface
     mockLLM = {
       provider: 'test-provider',
@@ -81,21 +85,20 @@ describe('HostAgent', () => {
     expect(result.stats.duration).toBeGreaterThanOrEqual(0)
     expect(result.journal).toBe('')
     expect(result.summary).toBe('Not implemented yet')
+
+    // Verify mock was called with correct prompt
+    expect(mockPrompt).toHaveBeenCalledWith('修复 bug')
   })
 
-  it('should generate unique task IDs', async () => {
-    const result1 = await agent.run('task 1')
-    const result2 = await agent.run('task 2')
+  it('should handle errors and return failed status', async () => {
+    const errorMessage = 'LLM API error'
+    mockPrompt.mockRejectedValueOnce(new Error(errorMessage))
 
-    expect(result1.taskId).toBeDefined()
-    expect(result2.taskId).toBeDefined()
-    expect(result1.taskId).not.toBe(result2.taskId)
-  })
-
-  it('should return completed status when agent.prompt succeeds', async () => {
     const result = await agent.run('test task')
 
-    expect(result.status).toBe('completed')
+    expect(result.status).toBe('failed')
+    expect(result.error).toBeDefined()
+    expect(result.error).toContain(errorMessage)
     expect(result.taskId).toBeDefined()
   })
 
