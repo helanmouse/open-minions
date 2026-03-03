@@ -10,7 +10,7 @@ interface StartContainerArgs {
 
 interface StartContainerResult {
   containerId: string
-  status: string
+  status: 'running'
 }
 
 export function createStartContainerTool(
@@ -45,9 +45,9 @@ export function createStartContainerTool(
     execute: async (args: StartContainerArgs): Promise<StartContainerResult> => {
       try {
         // Validate image name
-        const imagePattern = /^[a-zA-Z0-9._-]+$/
+        const imagePattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
         if (!imagePattern.test(args.image)) {
-          throw new Error(`Invalid image name: ${args.image}. Must contain only alphanumeric characters, dots, hyphens, and underscores.`)
+          throw new Error(`Invalid image name: ${args.image}. Must start with alphanumeric and contain only alphanumeric characters, dots, hyphens, and underscores.`)
         }
 
         const config = {
@@ -65,7 +65,7 @@ export function createStartContainerTool(
 
         registry.register({
           id: handle.containerId,
-          taskId: '',
+          taskId: handle.containerId,
           status: 'running',
           createdAt: Date.now(),
           updatedAt: Date.now(),
