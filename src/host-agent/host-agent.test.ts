@@ -113,4 +113,47 @@ describe('HostAgent', () => {
     expect(result.stats.duration).toBeGreaterThanOrEqual(0)
     expect(typeof result.stats.duration).toBe('number')
   })
+
+  it('should log execution events', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    // Mock subscribe to capture the callback and simulate events
+    let eventCallback: any
+    mockSubscribe = vi.fn((callback: any) => {
+      eventCallback = callback
+    })
+
+    // Mock prompt to trigger events after subscription
+    mockPrompt = vi.fn().mockImplementation(async () => {
+      // Simulate agent_end event
+      if (eventCallback) {
+        eventCallback({ type: 'agent_end', messages: [] })
+      }
+      return {
+        role: 'assistant',
+        content: 'Test response'
+      }
+    })
+
+    // Create a new agent instance with the updated mocks
+    const testAgent = new HostAgent({
+      llm: mockLLM,
+      sandbox: mockSandbox,
+      registry: mockRegistry,
+      store: mockStore,
+      minionHome: '/tmp/minion'
+    })
+
+    await testAgent.run('test task')
+
+    // Verify startup log
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\[host\] Starting task: /)
+    )
+
+    // Verify agent end log
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[host:event] agent_end')
+
+    consoleErrorSpy.mockRestore()
+  })
 })
