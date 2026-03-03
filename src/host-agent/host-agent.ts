@@ -55,6 +55,9 @@ export class HostAgent {
     const startTime = Date.now()
     const taskId = this.generateTaskId()
 
+    // Log task start
+    console.error(`[host] Starting task: ${taskId}`)
+
     // Track containers and results
     const containers: Array<{ id: string; preserved?: boolean }> = []
     let journal = ''
