@@ -32,7 +32,7 @@ describe('Container Tools', () => {
       const mockHandle = {
         containerId: 'abc123',
         logs: vi.fn(),
-        wait: vi.fn(),
+        wait: vi.fn().mockResolvedValue({ exitCode: 0 }),
         stop: vi.fn()
       }
       vi.mocked(mockSandbox.start).mockResolvedValue(mockHandle)
@@ -61,7 +61,7 @@ describe('Container Tools', () => {
       const mockHandle = {
         containerId: 'abc123',
         logs: vi.fn(),
-        wait: vi.fn(),
+        wait: vi.fn().mockResolvedValue({ exitCode: 0 }),
         stop: vi.fn()
       }
       vi.mocked(mockSandbox.start).mockResolvedValue(mockHandle)
@@ -114,6 +114,137 @@ describe('Container Tools', () => {
       ).rejects.toThrow('Failed to start container: Docker daemon not running')
 
       expect(mockRegistry.register).not.toHaveBeenCalled()
+    })
+
+    it('should update registry when container completes successfully', async () => {
+      // Create a Promise that we can resolve manually
+      let resolveWait: (value: { exitCode: number }) => void
+      const waitPromise = new Promise<{ exitCode: number }>((resolve) => {
+        resolveWait = resolve
+      })
+
+      const mockHandle = {
+        containerId: 'test-container-123',
+        logs: vi.fn(),
+        wait: vi.fn().mockReturnValue(waitPromise),
+        stop: vi.fn()
+      }
+
+      vi.mocked(mockSandbox.start).mockResolvedValue(mockHandle)
+
+      const tool = createStartContainerTool(
+        mockSandbox,
+        mockRegistry,
+        () => '/test/run',
+        () => '/test/repo'
+      )
+
+      // Start container
+      await tool.execute('test-id', {
+        image: 'minion-base',
+        taskDescription: 'test task'
+      })
+
+      // Verify initial status is 'running'
+      expect(mockRegistry.register).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'running' })
+      )
+
+      // Simulate container completion
+      resolveWait!({ exitCode: 0 })
+
+      // Wait for background Promise to resolve
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      // Verify registry was updated to 'done'
+      expect(mockRegistry.update).toHaveBeenCalledWith(
+        'test-container-123',
+        expect.objectContaining({
+          status: 'done',
+          metadata: expect.objectContaining({ exitCode: 0 })
+        })
+      )
+    })
+
+    it('should update registry when container fails', async () => {
+      let resolveWait: (value: { exitCode: number }) => void
+      const waitPromise = new Promise<{ exitCode: number }>((resolve) => {
+        resolveWait = resolve
+      })
+
+      const mockHandle = {
+        containerId: 'test-container-456',
+        logs: vi.fn(),
+        wait: vi.fn().mockReturnValue(waitPromise),
+        stop: vi.fn()
+      }
+
+      vi.mocked(mockSandbox.start).mockResolvedValue(mockHandle)
+
+      const tool = createStartContainerTool(
+        mockSandbox,
+        mockRegistry,
+        () => '/test/run',
+        () => '/test/repo'
+      )
+
+      await tool.execute('test-id', {
+        image: 'minion-base',
+        taskDescription: 'test task'
+      })
+
+      // Simulate container failure
+      resolveWait!({ exitCode: 1 })
+
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      // Verify registry was updated to 'failed'
+      expect(mockRegistry.update).toHaveBeenCalledWith(
+        'test-container-456',
+        expect.objectContaining({
+          status: 'failed',
+          metadata: expect.objectContaining({ exitCode: 1 })
+        })
+      )
+    })
+
+    it('should handle errors in background monitoring', async () => {
+      const waitPromise = Promise.reject(new Error('Docker daemon crashed'))
+
+      const mockHandle = {
+        containerId: 'test-container-789',
+        logs: vi.fn(),
+        wait: vi.fn().mockReturnValue(waitPromise),
+        stop: vi.fn()
+      }
+
+      vi.mocked(mockSandbox.start).mockResolvedValue(mockHandle)
+
+      const tool = createStartContainerTool(
+        mockSandbox,
+        mockRegistry,
+        () => '/test/run',
+        () => '/test/repo'
+      )
+
+      await tool.execute('test-id', {
+        image: 'minion-base',
+        taskDescription: 'test task'
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      // Verify registry was updated to 'failed' with error
+      expect(mockRegistry.update).toHaveBeenCalledWith(
+        'test-container-789',
+        expect.objectContaining({
+          status: 'failed',
+          metadata: expect.objectContaining({
+            exitCode: -1,
+            error: 'Docker daemon crashed'
+          })
+        })
+      )
     })
   })
 
