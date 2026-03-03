@@ -29,17 +29,27 @@ If you extended the old AIHostAgent:
 
 2. **Add new tools following the pi-agent-core format:**
    ```typescript
-   export const myTool: Tool = {
+   import { Type, type Static } from '@sinclair/typebox'
+   import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
+
+   const MyToolSchema = Type.Object({
+     param: Type.String({ description: 'Parameter description' })
+   })
+
+   export const myTool: AgentTool<typeof MyToolSchema> = {
      name: 'my_tool',
+     label: 'my_tool',
      description: 'Description for the LLM',
-     parameters: z.object({
-       param: z.string().describe('Parameter description')
-     }),
-     execute: async (params) => {
+     parameters: MyToolSchema,
+     execute: async (_id: string, args: Static<typeof MyToolSchema>): Promise<AgentToolResult<MyResult>> => {
        // Implementation
-       return { success: true, result: 'output' };
+       const result = { success: true, result: 'output' }
+       return {
+         content: [{ type: 'text', text: JSON.stringify(result) }],
+         details: result
+       }
      }
-   };
+   }
    ```
 
 3. **Update system prompt in `src/host-agent/prompts.ts`**
