@@ -1,3 +1,8 @@
+import type { LLMAdapter } from '../llm/types.js'
+import type { DockerSandbox } from '../sandbox/docker.js'
+import type { ContainerRegistry } from '../container/registry.js'
+import type { TaskStore } from '../task/store.js'
+
 export interface HostAgentOptions {
   llm: LLMAdapter
   sandbox: DockerSandbox
