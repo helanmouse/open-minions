@@ -1,6 +1,18 @@
 import type { DockerSandbox } from '../../sandbox/docker.js'
 import type { ContainerRegistry } from '../../container/registry.js'
 
+interface StartContainerArgs {
+  image: string
+  memory?: string
+  cpus?: number
+  taskDescription: string
+}
+
+interface StartContainerResult {
+  containerId: string
+  status: string
+}
+
 export function createStartContainerTool(
   sandbox: DockerSandbox,
   registry: ContainerRegistry
@@ -30,32 +42,42 @@ export function createStartContainerTool(
       },
       required: ['image', 'taskDescription']
     },
-    execute: async (args: any) => {
-      const config = {
-        image: args.image,
-        repoPath: process.cwd(),
-        runDir: `/tmp/minion-run-${Date.now()}`,
-        memory: args.memory || '4g',
-        cpus: args.cpus || 2,
-        env: {
-          TASK_DESCRIPTION: args.taskDescription
+    execute: async (args: StartContainerArgs): Promise<StartContainerResult> => {
+      try {
+        // Validate image name
+        const imagePattern = /^[a-zA-Z0-9._-]+$/
+        if (!imagePattern.test(args.image)) {
+          throw new Error(`Invalid image name: ${args.image}. Must contain only alphanumeric characters, dots, hyphens, and underscores.`)
         }
-      }
 
-      const handle = await sandbox.start(config)
+        const config = {
+          image: args.image,
+          repoPath: process.cwd(),
+          runDir: `/tmp/minion-run-${Date.now()}`,
+          memory: args.memory || '4g',
+          cpus: args.cpus || 2,
+          env: {
+            TASK_DESCRIPTION: args.taskDescription
+          }
+        }
 
-      registry.register({
-        id: handle.containerId,
-        taskId: '',
-        status: 'running',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {}
-      })
+        const handle = await sandbox.start(config)
 
-      return {
-        containerId: handle.containerId,
-        status: 'running'
+        registry.register({
+          id: handle.containerId,
+          taskId: '',
+          status: 'running',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          metadata: { runDir: config.runDir }
+        })
+
+        return {
+          containerId: handle.containerId,
+          status: 'running'
+        }
+      } catch (error) {
+        throw new Error(`Failed to start container: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
   }
