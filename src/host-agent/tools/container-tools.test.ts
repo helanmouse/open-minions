@@ -154,7 +154,9 @@ describe('Container Tools', () => {
       resolveWait!({ exitCode: 0 })
 
       // Wait for background Promise to resolve
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await vi.waitFor(() => {
+        expect(mockRegistry.update).toHaveBeenCalled()
+      }, { timeout: 1000 })
 
       // Verify registry was updated to 'done'
       expect(mockRegistry.update).toHaveBeenCalledWith(
@@ -196,7 +198,9 @@ describe('Container Tools', () => {
       // Simulate container failure
       resolveWait!({ exitCode: 1 })
 
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await vi.waitFor(() => {
+        expect(mockRegistry.update).toHaveBeenCalled()
+      }, { timeout: 1000 })
 
       // Verify registry was updated to 'failed'
       expect(mockRegistry.update).toHaveBeenCalledWith(
@@ -209,7 +213,10 @@ describe('Container Tools', () => {
     })
 
     it('should handle errors in background monitoring', async () => {
-      const waitPromise = Promise.reject(new Error('Docker daemon crashed'))
+      let rejectWait: (error: Error) => void
+      const waitPromise = new Promise<{ exitCode: number }>((_, reject) => {
+        rejectWait = reject
+      })
 
       const mockHandle = {
         containerId: 'test-container-789',
@@ -232,7 +239,11 @@ describe('Container Tools', () => {
         taskDescription: 'test task'
       })
 
-      await new Promise(resolve => setTimeout(resolve, 10))
+      rejectWait!(new Error('Docker daemon crashed'))
+
+      await vi.waitFor(() => {
+        expect(mockRegistry.update).toHaveBeenCalled()
+      }, { timeout: 1000 })
 
       // Verify registry was updated to 'failed' with error
       expect(mockRegistry.update).toHaveBeenCalledWith(
