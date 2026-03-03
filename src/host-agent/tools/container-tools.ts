@@ -119,7 +119,7 @@ export function createGetContainerStatusTool(
       // For now, return registry status
       return {
         status: container.status,
-        exitCode: container.metadata.exitCode
+        exitCode: container.metadata.exitCode ?? undefined
       }
     }
   }

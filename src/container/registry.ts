@@ -19,6 +19,8 @@ export interface ContainerHandle {
     preserveReason?: string
     /** Snapshot ID if container was snapshotted */
     snapshotId?: string
+    /** Exit code from container execution */
+    exitCode?: number
   }
   /** Timestamp when container was created (milliseconds since epoch) */
   createdAt: number
