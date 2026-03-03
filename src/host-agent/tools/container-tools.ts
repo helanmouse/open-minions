@@ -8,6 +8,7 @@ import type { ContainerRegistry } from '../../container/registry.js'
 interface StartContainerResult {
   containerId: string
   status: 'running'
+  message: string
 }
 
 interface GetContainerStatusResult {
@@ -80,9 +81,29 @@ export function createStartContainerTool(
           metadata: { runDir }
         })
 
+        // Background monitoring (non-blocking)
+        handle.wait()
+          .then(({ exitCode }) => {
+            registry.update(handle.containerId, {
+              status: exitCode === 0 ? 'done' : 'failed',
+              metadata: { exitCode, runDir }
+            })
+          })
+          .catch((error) => {
+            // Handle unexpected errors (container killed, Docker daemon crash, etc.)
+            registry.update(handle.containerId, {
+              status: 'failed',
+              metadata: {
+                exitCode: -1,
+                runDir
+              }
+            })
+          })
+
         const result = {
           containerId: handle.containerId,
-          status: 'running' as const
+          status: 'running' as const,
+          message: 'Container started. Use get_container_status to monitor progress.'
         }
         return {
           content: [{ type: 'text', text: JSON.stringify(result) }],
