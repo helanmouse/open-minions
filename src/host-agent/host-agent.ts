@@ -1,5 +1,5 @@
-import { Agent } from '@mariozechner/pi-agent-core'
-import { getModel } from '@mariozechner/pi-ai'
+import { Agent, type AgentTool } from '@mariozechner/pi-agent-core'
+import { randomUUID } from 'node:crypto'
 import type { HostAgentOptions, TaskResult } from './types.js'
 import { buildHostAgentSystemPrompt } from './prompts.js'
 import type { DockerSandbox } from '../sandbox/docker.js'
@@ -20,7 +20,7 @@ export class HostAgent {
     this.minionHome = options.minionHome
 
     // TODO: Create tools
-    const tools: any[] = []
+    const tools: AgentTool[] = []
 
     // Build system prompt
     const systemPrompt = buildHostAgentSystemPrompt()
@@ -39,22 +39,36 @@ export class HostAgent {
     const startTime = Date.now()
     const taskId = this.generateTaskId()
 
-    // TODO: Implement agent execution
-    await this.agent.prompt(userPrompt)
+    try {
+      // TODO: Implement agent execution
+      await this.agent.prompt(userPrompt)
 
-    return {
-      taskId,
-      status: 'completed',
-      containers: [],
-      patches: { applied: 0, failed: 0, conflicts: [] },
-      changes: { branch: '', commits: 0, filesChanged: [] },
-      stats: { duration: Date.now() - startTime, llmCalls: 0, tokensUsed: 0 },
-      journal: '',
-      summary: 'Not implemented yet'
+      // Placeholder return - will be replaced with actual implementation in later tasks
+      return {
+        taskId,
+        status: 'completed',
+        containers: [],
+        patches: { applied: 0, failed: 0, conflicts: [] },
+        changes: { branch: '', commits: 0, filesChanged: [] },
+        stats: { duration: Date.now() - startTime, llmCalls: 0, tokensUsed: 0 },
+        journal: '',
+        summary: 'Not implemented yet'
+      }
+    } catch (error) {
+      return {
+        taskId,
+        status: 'failed',
+        containers: [],
+        patches: { applied: 0, failed: 0, conflicts: [] },
+        changes: { branch: '', commits: 0, filesChanged: [] },
+        stats: { duration: Date.now() - startTime, llmCalls: 0, tokensUsed: 0 },
+        journal: '',
+        summary: `Error: ${error instanceof Error ? error.message : String(error)}`
+      }
     }
   }
 
   private generateTaskId(): string {
-    return Math.random().toString(36).substring(2, 15)
+    return randomUUID()
   }
 }
