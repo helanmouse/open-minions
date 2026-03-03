@@ -3,15 +3,14 @@ import { config } from 'dotenv';
 import { Command } from 'commander';
 import { join } from 'path';
 import { homedir } from 'os';
-import { loadConfig } from '../config/index.js';
 
 // Load .env file from current directory or home directory
 config({ path: ['.env', join(homedir(), '.minion', '.env')] });
 config();
-import { createLLMAdapter } from '../llm/factory.js';
 import { TaskStore } from '../task/store.js';
 import { DockerSandbox } from '../sandbox/docker.js';
-import { HostAgent } from '../host-agent/index.js';
+import { HostAgent } from '../host-agent/host-agent.js';
+import { ContainerRegistry } from '../container/registry.js';
 import { MinionsConfig } from '../host-agent/config.js';
 import { TuiSetup } from './setup/index.js';
 
@@ -69,20 +68,20 @@ program
   .action(async (descParts: string[], opts) => {
     const description = descParts.join(' ');
     const minionHome = join(homedir(), '.minion');
-    const config = loadConfig();
     const minionConfig = new MinionsConfig(process.cwd(), minionHome);
-    const llm = createLLMAdapter(config.llm);
+    const llm = await minionConfig.getModel();
     const sandbox = new DockerSandbox(minionHome);
     const store = new TaskStore(join(minionHome, 'tasks.json'));
+    const registry = new ContainerRegistry();
 
-    // Use AI Orchestrator for all tasks
-    console.log('🤖 Using AI Orchestrator');
+    // Use new HostAgent
+    console.log('🤖 Using HostAgent');
 
-    const { AIHostAgent } = await import('../host-agent/ai-host-agent.js');
-    const aiAgent = new AIHostAgent({
+    const hostAgent = new HostAgent({
       llm,
       sandbox,
       store,
+      registry,
       minionHome
     });
 
@@ -97,12 +96,7 @@ program
       });
     }
 
-    const result = await aiAgent.run(description, {
-      repo: opts.repo,
-      image: opts.image,
-      timeout: Number(opts.timeout),
-      detach: opts.d
-    });
+    const result = await hostAgent.run(description);
 
     if (result.status === 'completed') {
       console.log(`\n✓ Task completed: ${result.summary}`);
