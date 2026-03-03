@@ -177,4 +177,28 @@ export class HostAgent {
   private generateTaskId(): string {
     return randomUUID()
   }
+
+  private extractKeyParams(toolName: string, args: any): string {
+    try {
+      switch (toolName) {
+        case 'start_container':
+          return `image=${args.image || 'unknown'}`
+        case 'get_container_status':
+        case 'get_container_journal':
+          return `containerId=${args.containerId || 'unknown'}`
+        case 'list_patches':
+          return `containerId=${args.containerId || 'unknown'}`
+        case 'apply_patches':
+          return `patches=${args.patches?.length || 0}`
+        case 'create_branch':
+          return `branchName=${args.branchName || 'unknown'}`
+        case 'push_changes':
+          return `branch=${args.branch || 'unknown'}`
+        default:
+          return ''
+      }
+    } catch {
+      return ''
+    }
+  }
 }
