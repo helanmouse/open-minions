@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'fs'
+import { readdirSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import type { ContainerRegistry } from '../../container/registry.js'
@@ -36,19 +36,18 @@ export function createListPatchesTool(registry: ContainerRegistry) {
       required: ['containerId']
     },
     execute: async (args: ListPatchesArgs): Promise<ListPatchesResult> => {
-      const container = registry.get(args.containerId)
-      if (!container) {
-        throw new Error(`Container ${args.containerId} not found`)
-      }
-
-      const runDir = container.metadata.runDir
-      if (!runDir) {
-        throw new Error('Container run directory not found')
-      }
-
-      const patchesDir = join(runDir, 'patches')
-
       try {
+        const container = registry.get(args.containerId)
+        if (!container) {
+          return { patches: [] }
+        }
+
+        const runDir = container.metadata.runDir
+        if (!runDir) {
+          return { patches: [] }
+        }
+
+        const patchesDir = join(runDir, 'patches')
         const files = readdirSync(patchesDir)
         const patches = files
           .filter(f => f.endsWith('.patch'))
