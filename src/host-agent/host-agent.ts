@@ -107,13 +107,38 @@ export class HostAgent {
         `LLM_BASE_URL=${quoteIfNeeded(llmBaseUrl)}`
       ].join('\n'))
 
-      // Phase 4: Subscribe to agent events to track LLM usage
+      // Phase 4: Subscribe to agent events to track LLM usage and log execution
       this.agent.subscribe((event: any) => {
-        if (event.type === 'message_end') {
-          llmCalls++
-          if (event.message?.usage) {
-            tokensUsed += (event.message.usage.input_tokens || 0) + (event.message.usage.output_tokens || 0)
+        try {
+          if (event.type === 'tool_execution_start') {
+            const toolName = event.toolName || 'unknown'
+            const args = event.args || event.input || {}
+            const keyParams = this.extractKeyParams(toolName, args)
+            const paramsStr = keyParams ? ` ${keyParams}` : ''
+            console.error(`[host:tool] ${toolName}${paramsStr}`)
+          } else if (event.type === 'tool_execution_end') {
+            const toolName = event.toolName || 'unknown'
+            const hasError = event.isError || false
+            console.error(`[host:tool_done] ${toolName} error=${hasError}`)
+          } else if (event.type === 'message_end') {
+            llmCalls++
+            if (event.message?.usage) {
+              tokensUsed += (event.message.usage.input_tokens || 0) + (event.message.usage.output_tokens || 0)
+            }
+            // Add message logging
+            const msg = event.message
+            const types = msg?.content?.map((c: any) => c.type).join(',') || ''
+            console.error(`[host:msg] stopReason=${msg?.stopReason} types=${types}`)
+          } else if (event.type === 'agent_end') {
+            // Check for errors in last message
+            const last = event.messages?.[event.messages.length - 1]
+            if (last?.errorMessage) {
+              console.error(`[host:error] ${last.errorMessage}`)
+            }
+            console.error(`[host:event] agent_end`)
           }
+        } catch (e) {
+          // Never let logging crash the agent
         }
       })
 
