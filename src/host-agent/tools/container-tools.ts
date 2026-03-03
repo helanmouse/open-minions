@@ -13,6 +13,15 @@ interface StartContainerResult {
   status: 'running'
 }
 
+interface GetContainerStatusArgs {
+  containerId: string
+}
+
+interface GetContainerStatusResult {
+  status: string
+  exitCode?: number
+}
+
 export function createStartContainerTool(
   sandbox: DockerSandbox,
   registry: ContainerRegistry
@@ -78,6 +87,39 @@ export function createStartContainerTool(
         }
       } catch (error) {
         throw new Error(`Failed to start container: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+  }
+}
+
+export function createGetContainerStatusTool(
+  sandbox: DockerSandbox,
+  registry: ContainerRegistry
+) {
+  return {
+    name: 'get_container_status',
+    description: 'Check container execution status',
+    parameters: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID'
+        }
+      },
+      required: ['containerId']
+    },
+    execute: async (args: GetContainerStatusArgs): Promise<GetContainerStatusResult> => {
+      const container = registry.get(args.containerId)
+      if (!container) {
+        throw new Error(`Container ${args.containerId} not found`)
+      }
+
+      // TODO: Check actual container status from Docker
+      // For now, return registry status
+      return {
+        status: container.status,
+        exitCode: container.metadata.exitCode
       }
     }
   }
