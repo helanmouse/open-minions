@@ -50,9 +50,9 @@ describe('HostAgent', () => {
     // Mock ContainerRegistry
     mockRegistry = {
       register: vi.fn().mockResolvedValue(undefined),
-      get: vi.fn().mockResolvedValue({ id: 'test123', status: 'running' }),
-      update: vi.fn().mockResolvedValue(undefined),
-      list: vi.fn().mockReturnValue([]),  // Changed from mockResolvedValue to mockReturnValue
+      get: vi.fn().mockReturnValue({ id: 'test123', status: 'running' }),
+      update: vi.fn().mockReturnValue(true),  // Returns boolean, not Promise
+      list: vi.fn().mockReturnValue([]),
       remove: vi.fn().mockResolvedValue(undefined)
     } as any
 
