@@ -14,6 +14,7 @@ interface StartContainerResult {
 interface GetContainerStatusResult {
   status: string
   exitCode?: number
+  runtime?: number
 }
 
 interface GetContainerJournalResult {
@@ -143,11 +144,12 @@ export function createGetContainerStatusTool(
         throw new Error(`Container ${args.containerId} not found`)
       }
 
-      // TODO: Check actual container status from Docker
-      // For now, return registry status
+      const runtime = Date.now() - container.createdAt
+
       const result = {
         status: container.status,
-        exitCode: container.metadata.exitCode ?? undefined
+        exitCode: container.metadata.exitCode ?? undefined,
+        runtime
       }
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
