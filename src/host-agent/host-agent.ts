@@ -5,6 +5,9 @@ import { buildHostAgentSystemPrompt } from './prompts.js'
 import type { DockerSandbox } from '../sandbox/docker.js'
 import type { ContainerRegistry } from '../container/registry.js'
 import type { TaskStore } from '../task/store.js'
+import { createStartContainerTool, createGetContainerStatusTool, createGetContainerJournalTool } from './tools/container-tools.js'
+import { createListPatchesTool, createApplyPatchesTool } from './tools/patch-tools.js'
+import { createCreateBranchTool, createPushChangesTool } from './tools/git-tools.js'
 
 export class HostAgent {
   private agent: Agent
@@ -19,8 +22,16 @@ export class HostAgent {
     this.store = options.store
     this.minionHome = options.minionHome
 
-    // TODO: Create tools
-    const tools: AgentTool[] = []
+    // Create tools
+    const tools = [
+      createStartContainerTool(this.sandbox, this.registry),
+      createGetContainerStatusTool(this.sandbox, this.registry),
+      createGetContainerJournalTool(this.sandbox, this.registry),
+      createListPatchesTool(this.registry),
+      createApplyPatchesTool(),
+      createCreateBranchTool(),
+      createPushChangesTool()
+    ]
 
     // Build system prompt
     const systemPrompt = buildHostAgentSystemPrompt()
