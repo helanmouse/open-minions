@@ -91,6 +91,12 @@ export function createApplyPatchesTool() {
           applied++
         } catch (error) {
           failed++
+          // Clean up failed git am operation
+          try {
+            execFileSync('git', ['am', '--abort'], { cwd: process.cwd() })
+          } catch {
+            // Ignore errors if there's nothing to abort
+          }
           if (error instanceof Error && error.message.includes('conflict')) {
             conflicts.push(patch)
           }
