@@ -3,6 +3,11 @@ import { createStartContainerTool, createGetContainerStatusTool, createGetContai
 import type { DockerSandbox } from '../../sandbox/docker.js'
 import type { ContainerRegistry } from '../../container/registry.js'
 
+// Mock the fs module
+vi.mock('fs', () => ({
+  readFileSync: vi.fn()
+}))
+
 describe('Container Tools', () => {
   let mockSandbox: DockerSandbox
   let mockRegistry: ContainerRegistry
@@ -174,6 +179,59 @@ describe('Container Tools', () => {
           containerId: 'abc123'
         })
       ).rejects.toThrow('Container run directory not found')
+    })
+
+    it('should successfully read journal file', async () => {
+      const { readFileSync } = await import('fs')
+      const mockJournalContent = '# Task Journal\n\nTask completed successfully.'
+
+      vi.mocked(mockRegistry.get).mockReturnValue({
+        id: 'abc123',
+        taskId: 'abc123',
+        status: 'running',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        metadata: { runDir: '/tmp/minion-abc123' }
+      })
+
+      vi.mocked(readFileSync).mockReturnValue(mockJournalContent)
+
+      const tool = createGetContainerJournalTool(mockSandbox, mockRegistry)
+      const result = await tool.execute('tool-call-10', {
+        containerId: 'abc123'
+      })
+
+      expect(result.details.journal).toBe(mockJournalContent)
+      expect(result.content).toEqual([{ type: 'text', text: JSON.stringify({ journal: mockJournalContent }) }])
+      expect(readFileSync).toHaveBeenCalledWith('/tmp/minion-abc123/journal.md', 'utf-8')
+    })
+
+    it('should handle journal file read errors', async () => {
+      const { readFileSync } = await import('fs')
+
+      vi.mocked(mockRegistry.get).mockReturnValue({
+        id: 'abc123',
+        taskId: 'abc123',
+        status: 'running',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        metadata: { runDir: '/tmp/minion-abc123' }
+      })
+
+      vi.mocked(readFileSync).mockImplementation(() => {
+        throw new Error('EACCES: permission denied')
+      })
+
+      const tool = createGetContainerJournalTool(mockSandbox, mockRegistry)
+      const result = await tool.execute('tool-call-11', {
+        containerId: 'abc123'
+      })
+
+      expect(result.details.journal).toBe('Error reading journal: EACCES: permission denied')
+      expect(result.content).toEqual([{
+        type: 'text',
+        text: JSON.stringify({ journal: 'Error reading journal: EACCES: permission denied' })
+      }])
     })
   })
 })
