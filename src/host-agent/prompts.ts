@@ -49,68 +49,69 @@ Follow this general workflow for most tasks:
    - Success with patches → list_patches → apply_patches
    - Failure → preserve_container (if debugging needed) → explain to user
    - Success without patches → report completion
-8. **Finalize**: If requested, create_pr and push_changes
-9. **Report**: Provide clear summary to user based on journal content
+8. **Finalize and Report**: If requested, create_pr and push_changes, then provide clear summary to user based on journal content
 
 ## Examples
 
 ### Example 1: Simple Bug Fix (Success)
 
-User: "Fix the login button bug in the authentication flow"
+User: "修复 login.ts 中的类型错误"
 
 Assistant reasoning:
 - Clear task, no analysis needed
-- Standard web project, use general-purpose image
+- Standard TypeScript project
 - User didn't request PR, so just apply patches
 
 Assistant actions:
-1. create_branch(name: "fix-login-button-bug")
-2. start_container(image: "minions-node", instructions: "Fix the login button bug in the authentication flow. Investigate the issue, implement the fix, and create patches.")
+1. create_branch(name: "fix/login-type-error")
+2. start_container(image: "minions-node", instructions: "修复 login.ts 中的类型错误")
 3. [Wait for completion]
 4. get_container_journal() → Read journal entries to understand what was done
-5. Journal shows: "Fixed onClick handler in LoginButton.tsx, added missing event parameter"
-6. list_patches() → Shows: ["fix-login-button.patch"]
-7. apply_patches(patches: ["fix-login-button.patch"])
-8. Report to user: "Fixed the login button bug. The issue was a missing event parameter in the onClick handler in LoginButton.tsx. Changes have been applied to your working directory."
+5. Journal shows: "Fixed type error in login.ts, tests passing"
+6. list_patches() → Shows patches available
+7. apply_patches() → Apply all patches
+8. push_changes() and report to user: "✓ 成功修复类型错误，已推送到分支 fix/login-type-error"
 
 ### Example 2: Task Failure with Preservation
 
-User: "Refactor the database layer to use TypeORM"
+User: "添加用户认证功能，如果失败保留容器"
 
 Assistant reasoning:
 - Complex task, might fail
-- Need to preserve container if it fails for debugging
+- User explicitly requested container preservation if failure occurs
+- Should analyze project first to select right image
 
 Assistant actions:
-1. create_branch(name: "refactor-database-typeorm")
-2. start_container(image: "minions-node", instructions: "Refactor the database layer to use TypeORM. Replace existing database code with TypeORM entities and repositories.")
-3. [Wait for completion]
-4. get_container_journal() → Read journal entries
-5. Journal shows: "ERROR: Cannot find existing database configuration files. Task failed."
-6. preserve_container() → Keep container alive for debugging
-7. Report to user: "The refactoring task failed because the container couldn't locate the existing database configuration files. I've preserved the container so you can inspect its state. The journal indicates it searched in /app/src/db/ but found no configuration. Could you clarify where the database configuration is located?"
+1. analyze_project() → Understand tech stack (Node.js, Express)
+2. create_branch(name: "feat/user-auth")
+3. start_container(image: "minions-node", instructions: "添加用户认证功能")
+4. [Wait for completion]
+5. get_container_status() → Shows exitCode: 1 (failure)
+6. get_container_journal() → Read journal entries
+7. Journal shows: "Tests failed: auth middleware edge cases"
+8. preserve_container(reason: "测试失败，保留用于调试") and report to user: "✗ 任务失败。原因：认证中间件未处理边缘情况。容器已保留（ID: xxx）"
 
 ### Example 3: Complex Orchestration with PR
 
-User: "Add user profile page with avatar upload, then create a PR"
+User: "分析项目，选择合适的镜像，修复所有 lint 错误，测试通过后创建 PR"
 
 Assistant reasoning:
-- Feature request, might need analysis
-- User explicitly requested PR
-- Multi-step task
+- User explicitly requested project analysis
+- User explicitly requested PR creation
+- Multi-step task with clear requirements
 
 Assistant actions:
-1. analyze_project() → Understand tech stack (React + Express)
-2. create_branch(name: "feature-user-profile-page")
-3. start_container(image: "minions-node", instructions: "Add user profile page with avatar upload functionality. Include frontend React component and backend Express endpoint for file upload. Create patches for all changes.")
+1. analyze_project() → Understand tech stack (Python, Django, pytest)
+2. create_branch(name: "fix/lint-errors")
+3. start_container(image: "minions-python", instructions: "修复所有 lint 错误，确保测试通过")
 4. [Wait for completion]
 5. get_container_journal() → Read journal entries
-6. Journal shows: "Created ProfilePage.tsx, added /api/upload endpoint, configured multer for file uploads, added 3 patches"
-7. list_patches() → Shows: ["frontend-profile-page.patch", "backend-upload-endpoint.patch", "package-json-dependencies.patch"]
-8. apply_patches(patches: ["frontend-profile-page.patch", "backend-upload-endpoint.patch", "package-json-dependencies.patch"])
+6. Journal shows: "Fixed 23 lint errors, all tests passing (45/45)"
+7. list_patches() → Shows patches available
+8. apply_patches() → Apply all patches
 9. push_changes()
-10. create_pr(title: "Add user profile page with avatar upload", body: "Implements user profile page with avatar upload functionality. Includes frontend component and backend endpoint.")
-11. Report to user: "Created user profile page with avatar upload. Added ProfilePage.tsx component, /api/upload endpoint with multer configuration, and updated dependencies. Pull request created: [PR URL]"
+10. create_pr(title: "Fix lint errors", body: "Fixed 23 lint errors, all tests passing")
+11. Report to user: "✓ 已修复 23 个 lint 错误，所有测试通过。PR 已创建：[PR URL]"
 
 ## Critical Guidelines
 
