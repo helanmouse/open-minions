@@ -7,7 +7,7 @@ import type { ContainerRegistry } from '../container/registry.js'
 import type { TaskStore } from '../task/store.js'
 import { createStartContainerTool, createGetContainerStatusTool, createGetContainerJournalTool } from './tools/container-tools.js'
 import { createListPatchesTool, createApplyPatchesTool } from './tools/patch-tools.js'
-import { createCreateBranchTool, createPushChangesTool } from './tools/git-tools.js'
+import { createBranchTool, pushChangesTool } from './tools/git-tools.js'
 
 export class HostAgent {
   private agent: Agent
@@ -23,14 +23,14 @@ export class HostAgent {
     this.minionHome = options.minionHome
 
     // Create tools
-    const tools = [
+    const tools: AgentTool<any>[] = [
       createStartContainerTool(this.sandbox, this.registry),
       createGetContainerStatusTool(this.sandbox, this.registry),
       createGetContainerJournalTool(this.sandbox, this.registry),
       createListPatchesTool(this.registry),
       createApplyPatchesTool(),
-      createCreateBranchTool(),
-      createPushChangesTool()
+      createBranchTool,
+      pushChangesTool
     ]
 
     // Build system prompt

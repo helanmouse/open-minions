@@ -1,10 +1,10 @@
-import type { LLMAdapter } from '../llm/types.js'
+import type { Model } from '@mariozechner/pi-ai'
 import type { DockerSandbox } from '../sandbox/docker.js'
 import type { ContainerRegistry } from '../container/registry.js'
 import type { TaskStore } from '../task/store.js'
 
 export interface HostAgentOptions {
-  llm: LLMAdapter
+  llm: Model<any>
   sandbox: DockerSandbox
   registry: ContainerRegistry
   store: TaskStore
