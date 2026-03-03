@@ -181,6 +181,17 @@ MINION_AI_MODE=true minion run "Any task description"
 - English: `preserve`, `snapshot`, `parallel`, `retry`, `auto-apply`, `keep container`
 - Chinese: `保留`, `快照`, `并行`, `重试`, `自动应用`
 
+### Execution Logs
+
+During execution, you'll see detailed logs showing:
+- `[host] Starting task:` - Task initialization
+- `[host:tool] {tool} {params}` - Tool calls with key parameters
+- `[host:tool_done] {tool} error={bool}` - Tool completion status
+- `[host:msg] stopReason={reason}` - LLM response completion
+- `[host:event] agent_end` - Agent completion
+
+These logs help you understand what the agent is doing in real-time.
+
 ### Advanced Usage
 
 The Host Agent understands natural language instructions:
@@ -400,6 +411,17 @@ MINION_AI_MODE=true minion run "任意任务描述"
 **AI 模式关键词：**
 - 中文：`保留`、`快照`、`并行`、`重试`、`自动应用`
 - 英文：`preserve`、`snapshot`、`parallel`、`retry`、`auto-apply`、`keep container`
+
+### 执行日志
+
+执行过程中，你会看到详细的日志输出：
+- `[host] Starting task:` - 任务初始化
+- `[host:tool] {tool} {params}` - 工具调用及关键参数
+- `[host:tool_done] {tool} error={bool}` - 工具完成状态
+- `[host:msg] stopReason={reason}` - LLM 响应完成
+- `[host:event] agent_end` - Agent 完成
+
+这些日志帮助你实时了解 agent 正在做什么。
 
 ### 高级用法
 
