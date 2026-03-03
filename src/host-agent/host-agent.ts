@@ -1,6 +1,7 @@
 import { Agent } from '@mariozechner/pi-agent-core'
+import { getModel } from '@mariozechner/pi-ai'
 import type { HostAgentOptions, TaskResult } from './types.js'
-import { buildSystemPrompt } from './prompts.js'
+import { buildHostAgentSystemPrompt } from './prompts.js'
 import type { DockerSandbox } from '../sandbox/docker.js'
 import type { ContainerRegistry } from '../container/registry.js'
 import type { TaskStore } from '../task/store.js'
@@ -22,7 +23,7 @@ export class HostAgent {
     const tools: any[] = []
 
     // Build system prompt
-    const systemPrompt = buildSystemPrompt()
+    const systemPrompt = buildHostAgentSystemPrompt()
 
     // Create Agent
     this.agent = new Agent({

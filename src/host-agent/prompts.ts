@@ -2,7 +2,7 @@
  * System prompts for the Minions Host Agent
  */
 
-export function buildSystemPrompt(): string {
+export function buildHostAgentSystemPrompt(): string {
   return `You are the Minions Host Agent, responsible for orchestrating coding tasks.
 
 Your role is to understand user requests, select appropriate container images, manage task execution, and handle results intelligently.
