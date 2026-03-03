@@ -144,7 +144,10 @@ export function createGetContainerStatusTool(
         throw new Error(`Container ${args.containerId} not found`)
       }
 
-      const runtime = Date.now() - container.createdAt
+      // Calculate runtime: current time for running containers, completion time for stopped containers
+      const runtime = container.status === 'running'
+        ? Date.now() - container.createdAt
+        : container.updatedAt - container.createdAt
 
       const result = {
         status: container.status,
