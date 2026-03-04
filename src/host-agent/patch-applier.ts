@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { readdirSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 export interface PatchResult {
@@ -31,6 +31,63 @@ export function applyPatches(repoPath: string, patchDir: string): PatchResult {
     try { execFileSync('git', ['am', '--abort'], { cwd: repoPath }); } catch {}
     return { success: false, commits: 0, error: e.stderr || e.message };
   }
+}
+
+export function hasGitMetadata(repoPath: string): boolean {
+  return existsSync(join(repoPath, '.git'));
+}
+
+function listTarArtifacts(paths: string[]): string[] {
+  const files: string[] = [];
+  for (const path of paths) {
+    if (!existsSync(path)) continue;
+    const artifacts = readdirSync(path)
+      .filter(file => file.endsWith('.tar') || file.endsWith('.tar.gz') || file.endsWith('.tgz'))
+      .sort()
+      .map(file => join(path, file));
+    files.push(...artifacts);
+  }
+  return files;
+}
+
+export function applyTarArtifacts(targetPath: string, artifactPaths: string[]): PatchResult {
+  const artifacts = listTarArtifacts(artifactPaths);
+  if (artifacts.length === 0) {
+    return { success: true, commits: 0 };
+  }
+
+  try {
+    for (const artifact of artifacts) {
+      execFileSync('tar', ['-xzf', artifact, '-C', targetPath], {
+        encoding: 'utf-8',
+        timeout: 60_000,
+      });
+    }
+    return { success: true, commits: artifacts.length };
+  } catch (e: any) {
+    return { success: false, commits: 0, error: e.stderr || e.message };
+  }
+}
+
+export interface HostDeliveryResult extends PatchResult {
+  mode: 'git' | 'tar';
+}
+
+export function applyHostDelivery(repoPath: string, runDir: string): HostDeliveryResult {
+  const patchDir = join(runDir, 'patches');
+  const artifactsDir = join(runDir, 'artifacts');
+
+  if (hasGitMetadata(repoPath)) {
+    return {
+      mode: 'git',
+      ...applyPatches(repoPath, patchDir),
+    };
+  }
+
+  return {
+    mode: 'tar',
+    ...applyTarArtifacts(repoPath, [artifactsDir, patchDir]),
+  };
 }
 
 export function pushRepo(repoPath: string, branch: string): void {

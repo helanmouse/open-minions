@@ -10,6 +10,7 @@ import type { TaskStore } from '../task/store.js'
 import type { TaskContext } from '../types/shared.js'
 import { parseExecutionStrategy, extractPromptEnvPairs } from './strategy-parser.js'
 import { dockerTool, gitTool, tarTool } from './tools/native-tools.js'
+import { applyHostDelivery } from './patch-applier.js'
 
 interface HostRunOptions {
   runtimeEnv?: Record<string, string>
@@ -185,12 +186,31 @@ export class HostAgent {
         }
       }
 
+      const deliveryResult = applyHostDelivery(this.currentRepoPath, runDir)
+      if (!deliveryResult.success) {
+        return {
+          taskId,
+          status: 'failed',
+          containers,
+          patches: { applied: 0, failed: 1, conflicts: [] },
+          changes: { branch: '', commits: 0, filesChanged: [] },
+          stats: {
+            duration: Date.now() - startTime,
+            llmCalls,
+            tokensUsed
+          },
+          journal,
+          summary: `Error: host-side delivery failed (${deliveryResult.mode})`,
+          error: deliveryResult.error ?? 'host-side delivery failed',
+        }
+      }
+
       // Return success result
       return {
         taskId,
         status: 'completed',
         containers,
-        patches: { applied: 0, failed: 0, conflicts: [] },
+        patches: { applied: deliveryResult.commits, failed: 0, conflicts: [] },
         changes: { branch: '', commits: 0, filesChanged: [] },
         stats: {
           duration: Date.now() - startTime,
