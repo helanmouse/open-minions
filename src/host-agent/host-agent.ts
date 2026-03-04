@@ -8,7 +8,20 @@ import type { DockerSandbox } from '../sandbox/docker.js'
 import type { ContainerRegistry } from '../container/registry.js'
 import type { TaskStore } from '../task/store.js'
 import type { TaskContext } from '../types/shared.js'
+import { parseExecutionStrategy, extractPromptEnvPairs } from './strategy-parser.js'
 import { dockerTool, gitTool, tarTool } from './tools/native-tools.js'
+
+interface HostRunOptions {
+  runtimeEnv?: Record<string, string>
+}
+
+const PASSTHROUGH_RUNTIME_ENV_KEYS = new Set([
+  'JAVA_HOME',
+  'TZ',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+])
 
 export class HostAgent {
   private agent: Agent
@@ -45,7 +58,7 @@ export class HostAgent {
     })
   }
 
-  async run(userPrompt: string): Promise<TaskResult> {
+  async run(userPrompt: string, runOptions: HostRunOptions = {}): Promise<TaskResult> {
     const startTime = Date.now()
     const taskId = this.generateTaskId()
 
@@ -67,6 +80,10 @@ export class HostAgent {
       this.currentRunDir = runDir
       this.currentRepoPath = process.cwd()
 
+      const strategy = parseExecutionStrategy(userPrompt)
+      const promptEnv = extractPromptEnvPairs(userPrompt)
+      const effectiveRuntimeEnv = this.buildRuntimeEnv(strategy, promptEnv, runOptions.runtimeEnv)
+
       // Phase 2: Write context.json for Sandbox Agent
       const context: TaskContext = {
         taskId,
@@ -77,7 +94,9 @@ export class HostAgent {
         projectAnalysis: {},
         rules: [],
         maxIterations: 50,
-        timeout: 30
+        timeout: 30,
+        effectiveStrategy: strategy,
+        forwardedEnv: effectiveRuntimeEnv,
       }
       writeFileSync(join(runDir, 'context.json'), JSON.stringify(context, null, 2))
 
@@ -94,11 +113,16 @@ export class HostAgent {
         return value
       }
 
+      const runtimeEnvLines = Object.entries(effectiveRuntimeEnv)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${key}=${quoteIfNeeded(value)}`)
+
       writeFileSync(join(runDir, '.env'), [
         `LLM_PROVIDER=${quoteIfNeeded(llmProvider)}`,
         `LLM_MODEL=${quoteIfNeeded(llmModel)}`,
         `LLM_API_KEY=${quoteIfNeeded(llmApiKey)}`,
-        `LLM_BASE_URL=${quoteIfNeeded(llmBaseUrl)}`
+        `LLM_BASE_URL=${quoteIfNeeded(llmBaseUrl)}`,
+        ...runtimeEnvLines,
       ].join('\n'))
 
       // Phase 4: Subscribe to agent events to track LLM usage and log execution
@@ -213,5 +237,55 @@ export class HostAgent {
     } catch {
       return ''
     }
+  }
+
+  private strategyToEnv(strategy: ReturnType<typeof parseExecutionStrategy>): Record<string, string> {
+    const env: Record<string, string> = {}
+    if (strategy.preserveOnFailure) env.MINION_PRESERVE_ON_FAILURE = 'true'
+    if (strategy.snapshotMode) env.MINION_SNAPSHOT_MODE = strategy.snapshotMode
+    if (strategy.retryEnabled) env.MINION_RETRY_ENABLED = 'true'
+    if (strategy.retryMax) env.MINION_RETRY_MAX = String(strategy.retryMax)
+    if (strategy.parallelRuns > 1) env.MINION_PARALLEL_RUNS = String(strategy.parallelRuns)
+    if (strategy.autoApply) env.MINION_AUTO_APPLY = 'true'
+    if (strategy.memory) env.SANDBOX_MEMORY = strategy.memory
+    if (strategy.cpus) env.SANDBOX_CPUS = String(strategy.cpus)
+    return env
+  }
+
+  private buildRuntimeEnv(
+    strategy: ReturnType<typeof parseExecutionStrategy>,
+    promptEnv: Record<string, string>,
+    explicitRuntimeEnv?: Record<string, string>,
+  ): Record<string, string> {
+    const defaults = this.defaultRuntimeEnv()
+    const strategyEnv = this.strategyToEnv(strategy)
+    const processExplicitEnv = this.extractProcessRuntimeEnv()
+
+    return {
+      ...defaults,
+      ...strategyEnv,
+      ...promptEnv,
+      ...processExplicitEnv,
+      ...(explicitRuntimeEnv ?? {}),
+    }
+  }
+
+  private defaultRuntimeEnv(): Record<string, string> {
+    return {}
+  }
+
+  private extractProcessRuntimeEnv(): Record<string, string> {
+    const runtimeEnv: Record<string, string> = {}
+    for (const [key, value] of Object.entries(process.env)) {
+      if (typeof value !== 'string' || value.length === 0) continue
+      if (
+        key.startsWith('MINION_')
+        || key.startsWith('SANDBOX_')
+        || PASSTHROUGH_RUNTIME_ENV_KEYS.has(key)
+      ) {
+        runtimeEnv[key] = value
+      }
+    }
+    return runtimeEnv
   }
 }

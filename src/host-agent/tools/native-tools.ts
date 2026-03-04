@@ -19,7 +19,27 @@ const NativeToolSchema = Type.Object({
   runId: Type.Optional(Type.String({ description: 'Run identifier for tracing' })),
 })
 
-function executeCommand(command: string, args: string[], cwd?: string, env?: Record<string, string>, timeoutMs?: number): NativeToolResult {
+type ExecRunner = (
+  command: string,
+  args: string[],
+  options: {
+    cwd?: string
+    env?: NodeJS.ProcessEnv
+    encoding: 'utf-8'
+    timeout: number
+    maxBuffer: number
+    stdio: 'pipe'
+  },
+) => string
+
+function executeCommand(
+  command: string,
+  args: string[],
+  cwd?: string,
+  env?: Record<string, string>,
+  timeoutMs?: number,
+  runner: ExecRunner = execFileSync as ExecRunner,
+): NativeToolResult {
   const validation = validateHostCommand(command, args)
   if (!validation.allowed) {
     return {
@@ -32,7 +52,7 @@ function executeCommand(command: string, args: string[], cwd?: string, env?: Rec
 
   const startEnv = env ? { ...process.env, ...env } : process.env
   try {
-    const stdout = execFileSync(command, args, {
+    const stdout = runner(command, args, {
       cwd,
       env: startEnv,
       encoding: 'utf-8',
@@ -50,6 +70,25 @@ function executeCommand(command: string, args: string[], cwd?: string, env?: Rec
   }
 }
 
+export function executeDockerWithFallback(
+  args: string[],
+  cwd?: string,
+  env?: Record<string, string>,
+  timeoutMs?: number,
+  runner: ExecRunner = execFileSync as ExecRunner,
+): NativeToolResult {
+  const podmanResult = executeCommand('docker', args, cwd, env, timeoutMs, (_command, commandArgs, options) => runner('podman', commandArgs, options))
+  if (podmanResult.exitCode === 0) {
+    return { ...podmanResult, runtimeBackend: 'podman' }
+  }
+  if (podmanResult.deniedReason) {
+    return podmanResult
+  }
+
+  const dockerResult = executeCommand('docker', args, cwd, env, timeoutMs, runner)
+  return { ...dockerResult, runtimeBackend: 'docker' }
+}
+
 function createNativeTool(name: 'docker' | 'git' | 'tar'): AgentTool<typeof NativeToolSchema> {
   return {
     name,
@@ -57,7 +96,9 @@ function createNativeTool(name: 'docker' | 'git' | 'tar'): AgentTool<typeof Nati
     description: `Execute ${name} command with policy enforcement`,
     parameters: NativeToolSchema,
     execute: async (_id: string, args: Static<typeof NativeToolSchema>): Promise<AgentToolResult<NativeToolResult>> => {
-      const result = executeCommand(name, args.args, args.cwd, args.env, args.timeoutMs)
+      const result = name === 'docker'
+        ? executeDockerWithFallback(args.args, args.cwd, args.env, args.timeoutMs)
+        : executeCommand(name, args.args, args.cwd, args.env, args.timeoutMs)
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
         details: result,
