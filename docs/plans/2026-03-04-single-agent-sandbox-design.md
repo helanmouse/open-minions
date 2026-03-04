@@ -144,12 +144,21 @@ When a sandbox container is running, the agent is expected to use full in-contai
 
 The host agent uses exactly four host tools:
 
-- `podman.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
-- `docker.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
-- `git.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
-- `tar.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `podman({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `docker({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `git({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `tar({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
 
 Each tool call is intentionally close to native CLI usage so agent command construction remains intuitive.
+
+### Tool invocation style (shell-like)
+
+Agent should call tools directly by tool name, not wrapper method names.
+
+- `tool=podman, args=["run", ...]`
+- `tool=docker, args=["exec", ...]`
+- `tool=git, args=["am", ...]`
+- `tool=tar, args=["-xzf", ...]`
 
 ### Allowed subcommands
 
