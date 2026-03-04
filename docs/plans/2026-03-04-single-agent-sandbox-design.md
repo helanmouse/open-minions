@@ -81,6 +81,58 @@ Patch/Artifact → Host Apply
    - git repo: `git am` (fallback to `git apply`).
    - non-git: unpack and sync files to the target directory.
 
+## Single-Agent System Prompt Contract
+
+The single host agent prompt must enforce these rules:
+
+1. **Host-side control**
+   - Host actions are allowed only through the single tool `host_cli.run`.
+   - Host generic shell is forbidden.
+   - Runtime preference is `podman` first, then `docker` fallback.
+
+2. **Container-side autonomy**
+   - After container start, agent may execute arbitrary commands inside container via `podman/docker exec`.
+   - In-container commands are not limited by host command allowlist semantics.
+   - Agent can install dependencies, run tests/build/lint, and perform any required task actions inside container.
+
+3. **Execution discipline**
+   - Always report effective strategy, effective env vars, runtime chosen, delivery mode, and final apply result.
+   - On denied host command, adapt to policy-compliant call or fallback path.
+
+4. **Few-shot requirement**
+   - Prompt must include concrete tool-call examples for:
+     - parallel + retry + env passthrough
+     - `podman` failure fallback to `docker`
+     - non-git artifact delivery
+     - in-container unrestricted execution using `exec ... bash -lc "<command>"`
+
+## Minimal Tool Contract (Single Tool)
+
+The host agent uses one tool only:
+
+`host_cli.run({ program, args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+
+### Allowed host programs
+
+- `podman`
+- `docker`
+- `git`
+- `tar`
+
+### Allowed subcommands
+
+- `podman|docker`: `pull`, `run`, `exec`, `logs`, `wait`, `stop`, `rm`, `cp`, `inspect`, `commit`
+- `git`: `clone`, `status`, `add`, `commit`, `format-patch`, `am`, `apply`, `am --abort`, `rev-parse`
+- `tar`: `-czf`, `-xzf`
+
+### Host safety policy
+
+1. Apply safety argument checks to host-impacting container lifecycle operations (`run`, `commit`, `cp`, mounts/network flags).
+2. Deny high-risk launch flags such as `--privileged`, `--pid=host`, `--ipc=host`, `--device`, unsafe capability grants, and dangerous host root mounts.
+3. Enforce path boundaries for host-side file operations (run directories + target working directory).
+4. For `exec`, allow arbitrary in-container shell payload (`bash -lc "<any command>"`) after container is started.
+5. Every denied call must return a machine-readable `deniedReason`.
+
 ## Data Flow
 
 1. Host Agent receives task and target path.
@@ -92,6 +144,7 @@ Patch/Artifact → Host Apply
 7. Sandbox executes:
    - git repo: `git clone` → modify → `git format-patch`
    - non-git: copy → modify → package (`tar` or `zip`)
+   - agent can run unrestricted in-container commands via `exec ... bash -lc "<command>"`
 8. Artifact Collector returns output to host.
 9. Host Applier applies results to target directory.
 10. Host Agent reports outcome, logs, and strategy/status fields.
@@ -125,6 +178,7 @@ This matrix is a required acceptance artifact.
 | `MINION_AI_MODE=true` | `MINION_AI_MODE=true` | Explicit env in prompt/config | Host forwards env var to sandbox container | None | startup logs include effective env |
 | "Analyze project, select image" | `MINION_IMAGE_STRATEGY=analyze` (or `MINION_IMAGE=<name>` when explicit) | Prompt asks for analysis/selection | Host performs analysis and chooses image unless explicitly overridden | Use default base image on analysis failure | `status.imageSelection.source=analysis|override|default` |
 | Arbitrary env vars (e.g., `JAVA_HOME`, `TZ`) | Pass-through as provided (`KEY=VALUE`) | Prompt includes env assignment | Host forwards env vars directly into container | Parse error on malformed pair | startup logs include forwarded env pairs |
+| In-container unrestricted execution | N/A | Task needs arbitrary build/test/debug/install commands | Agent runs `podman/docker exec ... bash -lc "<command>"` | If exec denied/failed, retry/fallback runtime then continue | logs include exec command summary and exit code |
 | PR request (e.g., "create PR") | None required | Prompt asks for PR | Handled by agent natural-language capability if repo context supports it | If remote context missing, report actionable failure | task summary includes PR action result |
 
 ## Environment Variable Passthrough Policy
@@ -156,6 +210,8 @@ This matrix is a required acceptance artifact.
    - Reject malformed env token and continue with valid tokens.
 6. **Strategy/env conflict**
    - Resolve by precedence and record effective values in status/logs.
+7. **Host policy denial**
+   - Return `deniedReason`, adapt command or switch fallback path.
 
 ## Concurrency
 
@@ -187,6 +243,8 @@ This matrix is a required acceptance artifact.
 4. Arbitrary prompt env var pass-through is specified and non-whitelisted.
 5. Precedence rules are defined and testable.
 6. PR-style requests are explicitly treated as natural-language capabilities, not system-prompt hardwired flow.
+7. Prompt contract explicitly allows unrestricted in-container execution via `exec`.
+8. Single-tool contract is documented with allowed programs/subcommands and denied behavior.
 
 ## Open Questions
 
