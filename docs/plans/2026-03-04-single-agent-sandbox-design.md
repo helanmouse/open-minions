@@ -86,7 +86,7 @@ Patch/Artifact → Host Apply
 The single host agent prompt must enforce these rules:
 
 1. **Host-side control**
-   - Host actions are allowed only through the single tool `host_cli.run`.
+   - Host actions are allowed only through four native tools: `podman`, `docker`, `git`, `tar`.
    - Host generic shell is forbidden.
    - Runtime preference is `podman` first, then `docker` fallback.
 
@@ -140,18 +140,16 @@ When a sandbox container is running, the agent is expected to use full in-contai
    - Produce required delivery output (`patch` for git mode, artifact for non-git mode).
    - If full completion is impossible, deliver the best valid intermediate result plus explicit blocker details.
 
-## Minimal Tool Contract (Single Tool)
+## Minimal Tool Contract (Four Native Tools + Shared Policy Engine)
 
-The host agent uses one tool only:
+The host agent uses exactly four host tools:
 
-`host_cli.run({ program, args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `podman.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `docker.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `git.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
+- `tar.run({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
 
-### Allowed host programs
-
-- `podman`
-- `docker`
-- `git`
-- `tar`
+Each tool call is intentionally close to native CLI usage so agent command construction remains intuitive.
 
 ### Allowed subcommands
 
@@ -159,13 +157,22 @@ The host agent uses one tool only:
 - `git`: `clone`, `status`, `add`, `commit`, `format-patch`, `am`, `apply`, `am --abort`, `rev-parse`
 - `tar`: `-czf`, `-xzf`
 
-### Host safety policy
+### Shared policy engine
 
-1. Apply safety argument checks to host-impacting container lifecycle operations (`run`, `commit`, `cp`, mounts/network flags).
+All four tools must use one shared policy engine in code to avoid rule drift:
+
+1. **Allowlist first**: command/subcommand must be explicitly allowed.
+2. **Denylist second**: explicitly blocked flags/patterns are always rejected.
+3. **Argument validation**: reject unsafe combinations even when subcommand is allowed.
+4. **Path validation**: host file paths restricted to run directories + target working directory.
+5. **Consistent denial output**: every rejection returns machine-readable `deniedReason`.
+
+### Host safety rules
+
+1. Apply safety checks to host-impacting container lifecycle operations (`run`, `commit`, `cp`, mounts/network flags).
 2. Deny high-risk launch flags such as `--privileged`, `--pid=host`, `--ipc=host`, `--device`, unsafe capability grants, and dangerous host root mounts.
-3. Enforce path boundaries for host-side file operations (run directories + target working directory).
-4. For `exec`, allow arbitrary in-container shell payload (`bash -lc "<any command>"`) after container is started.
-5. Every denied call must return a machine-readable `deniedReason`.
+3. Keep host generic shell disabled at all times.
+4. For `exec`, allow arbitrary in-container shell payload (`bash -lc "<any command>"`) after container start.
 
 ## Data Flow
 
@@ -278,8 +285,9 @@ This matrix is a required acceptance artifact.
 5. Precedence rules are defined and testable.
 6. PR-style requests are explicitly treated as natural-language capabilities, not system-prompt hardwired flow.
 7. Prompt contract explicitly allows unrestricted in-container execution via `exec`.
-8. Single-tool contract is documented with allowed programs/subcommands and denied behavior.
-9. In-container responsibilities explicitly require a full plan→execute→verify→debug→deliver loop with best-effort completion.
+8. Four-tool contract is documented with allowed subcommands and denied behavior.
+9. All tool filtering is centralized in one shared policy engine (allowlist + denylist + arg/path checks).
+10. In-container responsibilities explicitly require a full plan→execute→verify→debug→deliver loop with best-effort completion.
 
 ## Open Questions
 
