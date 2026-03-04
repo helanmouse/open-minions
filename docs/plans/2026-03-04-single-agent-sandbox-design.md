@@ -72,14 +72,14 @@ Patch/Artifact → Host Apply
 
 5. **Sandbox Runner**
    - Starts containers (Docker/Podman, rootless preferred).
-   - Executes the task and produces delivery artifacts.
+   - Executes the task and produces verified workspace changes.
 
 6. **Artifact Collector**
-   - Retrieves patch or file package from the sandbox.
+   - Retrieves changed workspace content and execution metadata from the sandbox.
 
 7. **Applier**
-   - git repo: `git am` (fallback to `git apply`).
-   - non-git: unpack and sync files to the target directory.
+   - git repo: host generates patch and applies via `git am` (fallback to `git apply`).
+   - non-git: host packages/unpacks and syncs files to the target directory.
 
 ## Single-Agent System Prompt Contract
 
@@ -95,7 +95,7 @@ The single host agent prompt must enforce these rules:
    - After container start, agent may execute arbitrary commands inside container via `podman/docker exec`.
    - In-container commands are not limited by host command allowlist semantics.
    - Agent can install dependencies, run tests/build/lint, and perform any required task actions inside container.
-   - Delivery is produced by native in-container commands (`git format-patch` or archive commands), not by a dedicated delivery tool.
+   - Container output is code/state changes only; final delivery packaging and apply are host-side only.
 
 3. **Execution discipline**
    - Always report effective strategy, effective env vars, runtime chosen, delivery mode, and final apply result.
@@ -139,8 +139,8 @@ When a sandbox container is running, the agent is expected to use full in-contai
    - Do not claim completion when verification still fails.
 
 7. **Delivery**
-   - Produce required delivery output (`patch` for git mode, artifact for non-git mode).
-   - If full completion is impossible, deliver the best valid intermediate result plus explicit blocker details.
+   - Leave final delivery generation to host-side flow.
+   - If full completion is impossible, keep best valid intermediate changes and explicit blocker details for host-side reporting.
 
 ## Minimal Tool Contract (Four Native Tools + Shared Policy Engine)
 
@@ -186,6 +186,14 @@ All four tools must use one shared policy engine in code to avoid rule drift:
 3. Keep host generic shell disabled at all times.
 4. For `exec`, allow arbitrary in-container shell payload (`bash -lc "<any command>"`) after container start.
 
+## Host-Side Delivery Only (Hard Requirement)
+
+1. Final delivery packaging and apply must happen on host.
+2. Container is not allowed to be the final delivery authority.
+3. Git mode: host produces and applies patch.
+4. Non-git mode: host packages/applies archive.
+5. No container-side delivery fallback path is defined.
+
 ## Data Flow
 
 1. Host Agent receives task and target path.
@@ -195,12 +203,11 @@ All four tools must use one shared policy engine in code to avoid rule drift:
 5. Host Agent merges runtime options and env vars using precedence rules.
 6. Host Agent creates rootless sandbox container with merged env vars.
 7. Sandbox executes:
-   - git repo: `git clone` → modify → `git format-patch`
-   - non-git: copy → modify → package (`tar` or `zip`)
+   - git repo: `git clone` → modify → verify
+   - non-git: copy → modify → verify
    - agent can run unrestricted in-container commands via `exec ... bash -lc "<command>"`
-   - delivery generation is part of the in-container command sequence (no dedicated delivery tool call)
-8. Artifact Collector returns output to host.
-9. Host Applier applies results to target directory.
+8. Artifact Collector returns changed workspace output to host.
+9. Host generates delivery output (`patch` for git, archive for non-git) and applies results to target directory.
 10. Host Agent reports outcome, logs, and strategy/status fields.
 
 ## Artifact Strategies
@@ -208,13 +215,13 @@ All four tools must use one shared policy engine in code to avoid rule drift:
 ### Git Repo (Default)
 
 - Clone inside sandbox to ensure isolation.
-- Produce `git format-patch` for deterministic application.
+- Host generates `git format-patch` for deterministic application.
 - Host applies via `git am`; on failure, fallback to `git apply` and report conflicts.
 
 ### Non-Git Repo (Fallback)
 
 - Copy directory to sandbox workspace.
-- Produce a package of changed files (`tar` or `zip`).
+- Host generates a package of changed files (`tar` or `zip`).
 - Host applies by unpacking and synchronizing files into the target directory.
 
 ## README Instruction Compatibility Matrix
@@ -300,8 +307,8 @@ This matrix is a required acceptance artifact.
 7. Prompt contract explicitly allows unrestricted in-container execution via `exec`.
 8. Four-tool contract is documented with allowed subcommands and denied behavior.
 9. All tool filtering is centralized in one shared policy engine (allowlist + denylist + arg/path checks).
-10. In-container responsibilities explicitly require a full plan→execute→verify→debug→deliver loop with best-effort completion.
-11. Dedicated delivery tools are not required; delivery is generated via native in-container commands.
+10. In-container responsibilities explicitly require a full plan→execute→verify→debug loop with best-effort completion.
+11. Delivery is mandatory host-side only; dedicated delivery tools are not required.
 
 ## Open Questions
 
