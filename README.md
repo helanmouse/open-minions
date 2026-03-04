@@ -181,6 +181,17 @@ MINION_AI_MODE=true minion run "Any task description"
 - English: `preserve`, `snapshot`, `parallel`, `retry`, `auto-apply`, `keep container`
 - Chinese: `保留`, `快照`, `并行`, `重试`, `自动应用`
 
+### Single-Agent Compatibility (Current)
+
+- Host tool contract is minimized to `docker`, `git`, `tar`.
+- `docker` tool resolves runtime backend in order: `podman` first, `docker` fallback.
+- In-container execution remains unrestricted via `docker exec ... bash -lc "<command>"`.
+- Delivery is host-side only:
+  - Git repo: host applies patch flow (`git format-patch` / `git am`).
+  - Non-git directory: host applies artifact flow (`tar` package/extract).
+- Prompt env passthrough supports arbitrary `KEY=VALUE` pairs.
+- Effective env precedence: explicit runtime env > prompt env > prompt strategy env > defaults.
+
 ### Execution Logs
 
 During execution, you'll see detailed logs showing:
@@ -411,6 +422,17 @@ MINION_AI_MODE=true minion run "任意任务描述"
 **AI 模式关键词：**
 - 中文：`保留`、`快照`、`并行`、`重试`、`自动应用`
 - 英文：`preserve`、`snapshot`、`parallel`、`retry`、`auto-apply`、`keep container`
+
+### 单 Agent 兼容策略（当前）
+
+- Host 侧工具收敛为 `docker`、`git`、`tar` 三个。
+- `docker` 工具内部按 `podman` → `docker` 顺序做 backend 回退。
+- 容器内执行保持不受限，通过 `docker exec ... bash -lc "<command>"` 执行任意构建/测试/调试命令。
+- 交付严格由 Host 侧完成：
+  - Git 仓库走 `git format-patch` / `git am`。
+  - 非 Git 目录走 `tar` 打包/解包同步。
+- 提示词里的任意 `KEY=VALUE` 环境变量会透传到运行时。
+- 生效优先级：显式运行时环境变量 > 提示词环境变量 > 提示词策略派生变量 > 默认值。
 
 ### 执行日志
 

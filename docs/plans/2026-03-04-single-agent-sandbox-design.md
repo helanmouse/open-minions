@@ -243,6 +243,7 @@ This matrix is a required acceptance artifact.
 | "Analyze project, select image" | `MINION_IMAGE_STRATEGY=analyze` (or `MINION_IMAGE=<name>` when explicit) | Prompt asks for analysis/selection | Host performs analysis and chooses image unless explicitly overridden | Use default base image on analysis failure | `status.imageSelection.source=analysis|override|default` |
 | Arbitrary env vars (e.g., `JAVA_HOME`, `TZ`) | Pass-through as provided (`KEY=VALUE`) | Prompt includes env assignment | Host forwards env vars directly into container | Parse error on malformed pair | startup logs include forwarded env pairs |
 | In-container unrestricted execution | N/A | Task needs arbitrary build/test/debug/install commands | Agent runs `docker exec ... bash -lc "<command>"` | If exec denied/failed, retry/fallback runtime then continue | logs include exec command summary and exit code |
+| Host-side-only delivery | N/A | Task produces repo/artifact changes | Host applies delivery only (`git am` for git repo, `tar` extract for non-git path) | Apply failure surfaces host-side error and conflict context | task result includes host apply outcome |
 | PR request (e.g., "create PR") | None required | Prompt asks for PR | Handled by agent natural-language capability if repo context supports it | If remote context missing, report actionable failure | task summary includes PR action result |
 
 ## Environment Variable Passthrough Policy
@@ -317,3 +318,8 @@ This matrix is a required acceptance artifact.
 
 1. Default package format for non-git fallback: `tar` vs `zip`.
 2. Default max cap for `MINION_PARALLEL_RUNS`.
+
+## Compatibility Verification Hooks
+
+- `test/readme-compat-matrix.test.ts`: README keyword/instruction compatibility matrix acceptance tests.
+- `test/compat-observability.test.ts`: strategy/env/runtime fallback observability assertions.
