@@ -86,13 +86,13 @@ Patch/Artifact → Host Apply
 The single host agent prompt must enforce these rules:
 
 1. **Host-side control**
-   - Host actions are allowed only through four native tools: `podman`, `docker`, `git`, `tar`.
+   - Host actions are allowed only through three native tools: `docker`, `git`, `tar`.
    - Host generic shell is forbidden.
-   - Runtime preference is `podman` first, then `docker` fallback.
+   - Runtime backend is resolved inside `docker` tool (`podman` preferred, `docker` fallback).
    - No dedicated delivery tool is exposed on host.
 
 2. **Container-side autonomy**
-   - After container start, agent may execute arbitrary commands inside container via `podman/docker exec`.
+   - After container start, agent may execute arbitrary commands inside container via `docker exec`.
    - In-container commands are not limited by host command allowlist semantics.
    - Agent can install dependencies, run tests/build/lint, and perform any required task actions inside container.
    - Container output is code/state changes only; final delivery packaging and apply are host-side only.
@@ -104,7 +104,7 @@ The single host agent prompt must enforce these rules:
 4. **Few-shot requirement**
    - Prompt must include concrete tool-call examples for:
      - parallel + retry + env passthrough
-     - `podman` failure fallback to `docker`
+     - `docker` runtime backend fallback (`podman` backend failure → `docker` backend)
      - non-git artifact delivery
      - in-container unrestricted execution using `exec ... bash -lc "<command>"`
 
@@ -142,11 +142,10 @@ When a sandbox container is running, the agent is expected to use full in-contai
    - Leave final delivery generation to host-side flow.
    - If full completion is impossible, keep best valid intermediate changes and explicit blocker details for host-side reporting.
 
-## Minimal Tool Contract (Four Native Tools + Shared Policy Engine)
+## Minimal Tool Contract (Three Native Tools + Shared Policy Engine)
 
-The host agent uses exactly four host tools:
+The host agent uses exactly three host tools:
 
-- `podman({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
 - `docker({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
 - `git({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
 - `tar({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
@@ -158,20 +157,24 @@ There is no `deliver_patch`/`deliver_artifact` host tool in this design.
 
 Agent should call tools directly by tool name, not wrapper method names.
 
-- `tool=podman, args=["run", ...]`
+- `tool=docker, args=["run", ...]`
 - `tool=docker, args=["exec", ...]`
 - `tool=git, args=["am", ...]`
 - `tool=tar, args=["-xzf", ...]`
 
 ### Allowed subcommands
 
-- `podman|docker`: `pull`, `run`, `exec`, `logs`, `wait`, `stop`, `rm`, `cp`, `inspect`, `commit`
+- `docker`: `pull`, `run`, `exec`, `logs`, `wait`, `stop`, `rm`, `cp`, `inspect`, `commit`
 - `git`: `clone`, `status`, `add`, `commit`, `format-patch`, `am`, `apply`, `am --abort`, `rev-parse`
 - `tar`: `-czf`, `-xzf`
 
+`docker` tool backend selection is internal:
+- backend order: `podman` first, `docker` second
+- LLM-facing tool name remains `docker`
+
 ### Shared policy engine
 
-All four tools must use one shared policy engine in code to avoid rule drift:
+All three tools must use one shared policy engine in code to avoid rule drift:
 
 1. **Allowlist first**: command/subcommand must be explicitly allowed.
 2. **Denylist second**: explicitly blocked flags/patterns are always rejected.
@@ -184,7 +187,7 @@ All four tools must use one shared policy engine in code to avoid rule drift:
 1. Apply safety checks to host-impacting container lifecycle operations (`run`, `commit`, `cp`, mounts/network flags).
 2. Deny high-risk launch flags such as `--privileged`, `--pid=host`, `--ipc=host`, `--device`, unsafe capability grants, and dangerous host root mounts.
 3. Keep host generic shell disabled at all times.
-4. For `exec`, allow arbitrary in-container shell payload (`bash -lc "<any command>"`) after container start.
+4. For `docker exec`, allow arbitrary in-container shell payload (`bash -lc "<any command>"`) after container start.
 
 ## Host-Side Delivery Only (Hard Requirement)
 
@@ -239,7 +242,7 @@ This matrix is a required acceptance artifact.
 | `MINION_AI_MODE=true` | `MINION_AI_MODE=true` | Explicit env in prompt/config | Host forwards env var to sandbox container | None | startup logs include effective env |
 | "Analyze project, select image" | `MINION_IMAGE_STRATEGY=analyze` (or `MINION_IMAGE=<name>` when explicit) | Prompt asks for analysis/selection | Host performs analysis and chooses image unless explicitly overridden | Use default base image on analysis failure | `status.imageSelection.source=analysis|override|default` |
 | Arbitrary env vars (e.g., `JAVA_HOME`, `TZ`) | Pass-through as provided (`KEY=VALUE`) | Prompt includes env assignment | Host forwards env vars directly into container | Parse error on malformed pair | startup logs include forwarded env pairs |
-| In-container unrestricted execution | N/A | Task needs arbitrary build/test/debug/install commands | Agent runs `podman/docker exec ... bash -lc "<command>"` | If exec denied/failed, retry/fallback runtime then continue | logs include exec command summary and exit code |
+| In-container unrestricted execution | N/A | Task needs arbitrary build/test/debug/install commands | Agent runs `docker exec ... bash -lc "<command>"` | If exec denied/failed, retry/fallback runtime then continue | logs include exec command summary and exit code |
 | PR request (e.g., "create PR") | None required | Prompt asks for PR | Handled by agent natural-language capability if repo context supports it | If remote context missing, report actionable failure | task summary includes PR action result |
 
 ## Environment Variable Passthrough Policy
@@ -305,7 +308,7 @@ This matrix is a required acceptance artifact.
 5. Precedence rules are defined and testable.
 6. PR-style requests are explicitly treated as natural-language capabilities, not system-prompt hardwired flow.
 7. Prompt contract explicitly allows unrestricted in-container execution via `exec`.
-8. Four-tool contract is documented with allowed subcommands and denied behavior.
+8. Three-tool contract is documented with allowed subcommands and denied behavior.
 9. All tool filtering is centralized in one shared policy engine (allowlist + denylist + arg/path checks).
 10. In-container responsibilities explicitly require a full plan→execute→verify→debug loop with best-effort completion.
 11. Delivery is mandatory host-side only; dedicated delivery tools are not required.

@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Implement README instruction compatibility for the single-agent rootless sandbox design with four native host tools (`podman`, `docker`, `git`, `tar`), a shared policy engine, and host-side-only delivery.
+**Goal:** Implement README instruction compatibility for the single-agent rootless sandbox design with three native host tools (`docker`, `git`, `tar`), a shared policy engine, and host-side-only delivery.
 
-**Architecture:** Build a host-side strategy parser (keywords + `KEY=VALUE` env passthrough), then route all host actions through four shell-style tools guarded by one shared policy engine (allowlist + denylist + arg/path checks). Keep container execution unrestricted via `exec ... bash -lc`, but enforce delivery generation/apply on host only.
+**Architecture:** Build a host-side strategy parser (keywords + `KEY=VALUE` env passthrough), then route all host actions through three shell-style tools guarded by one shared policy engine (allowlist + denylist + arg/path checks). Use `docker` as the single container tool surface with internal backend selection (`podman` first, `docker` second). Keep container execution unrestricted via `exec ... bash -lc`, but enforce delivery generation/apply on host only.
 
 **Tech Stack:** TypeScript, Vitest, Dockerode/Podman runtime adapter, existing HostAgent + Sandbox agent pipeline
 
@@ -116,19 +116,19 @@ import { describe, it, expect } from 'vitest'
 import { validateHostCommand } from '../src/host-agent/policy-engine.js'
 
 describe('policy engine', () => {
-  it('allows podman run with safe args', () => {
-    const result = validateHostCommand('podman', ['run', '--rm', 'minion-base'])
+  it('allows docker run with safe args', () => {
+    const result = validateHostCommand('docker', ['run', '--rm', 'minion-base'])
     expect(result.allowed).toBe(true)
   })
 
   it('denies dangerous run flags', () => {
-    const result = validateHostCommand('podman', ['run', '--privileged', 'minion-base'])
+    const result = validateHostCommand('docker', ['run', '--privileged', 'minion-base'])
     expect(result.allowed).toBe(false)
     expect(result.deniedReason).toContain('privileged')
   })
 
   it('allows exec with arbitrary bash payload', () => {
-    const result = validateHostCommand('podman', ['exec', '-i', 'cid', 'bash', '-lc', 'apt-get update && npm test'])
+    const result = validateHostCommand('docker', ['exec', '-i', 'cid', 'bash', '-lc', 'apt-get update && npm test'])
     expect(result.allowed).toBe(true)
   })
 })
@@ -142,7 +142,7 @@ Expected: FAIL with module-not-found
 **Step 3: Implement policy engine**
 
 In `src/host-agent/policy-engine.ts`:
-- allowlist for programs: `podman|docker|git|tar`
+- allowlist for programs: `docker|git|tar`
 - allowlist for subcommands
 - denylist for high-risk flags
 - host path checks
@@ -162,7 +162,7 @@ git commit -m "feat(host-agent): add shared command policy engine"
 
 ---
 
-### Task 3: Add four native host tools (shell-style)
+### Task 3: Add three native host tools (shell-style)
 
 **Files:**
 - Modify: `src/host-agent/host-agent.ts`
@@ -174,11 +174,10 @@ git commit -m "feat(host-agent): add shared command policy engine"
 ```ts
 // test/native-tools.test.ts
 import { describe, it, expect } from 'vitest'
-import { podmanTool, dockerTool, gitTool, tarTool } from '../src/host-agent/tools/native-tools.js'
+import { dockerTool, gitTool, tarTool } from '../src/host-agent/tools/native-tools.js'
 
 describe('native tools', () => {
   it('exposes shell-style tool names', () => {
-    expect(podmanTool.name).toBe('podman')
     expect(dockerTool.name).toBe('docker')
     expect(gitTool.name).toBe('git')
     expect(tarTool.name).toBe('tar')
@@ -194,7 +193,7 @@ Expected: FAIL due to missing module
 **Step 3: Implement native tools with shared policy**
 
 In `src/host-agent/tools/native-tools.ts`:
-- create `podman`, `docker`, `git`, `tar` tools with common parameter schema:
+- create `docker`, `git`, `tar` tools with common parameter schema:
   - `args: string[]`
   - `cwd?: string`
   - `env?: Record<string, string>`
@@ -204,7 +203,7 @@ In `src/host-agent/tools/native-tools.ts`:
 - run command with `execFile` and return `{ exitCode, stdout, stderr, deniedReason? }`
 
 In `src/host-agent/host-agent.ts`:
-- register only these four host tools
+- register only these three host tools
 - remove single-entry wrapper assumptions
 
 **Step 4: Re-run tests**
@@ -216,17 +215,15 @@ Expected: PASS
 
 ```bash
 git add src/host-agent/tools/native-tools.ts src/host-agent/host-agent.ts test/native-tools.test.ts
-git commit -m "feat(host-agent): add four native shell-style host tools"
+git commit -m "feat(host-agent): add three native shell-style host tools"
 ```
 
 ---
 
-### Task 4: Wire runtime/env forwarding and podman-first fallback
+### Task 4: Wire runtime/env forwarding and docker backend fallback
 
 **Files:**
-- Modify: `src/sandbox/types.ts`
-- Modify: `src/sandbox/docker.ts`
-- Create: `src/sandbox/podman.ts`
+- Modify: `src/host-agent/tools/native-tools.ts`
 - Modify: `src/host-agent/host-agent.ts`
 - Create: `test/host-agent-runtime-env.test.ts`
 
@@ -235,7 +232,7 @@ git commit -m "feat(host-agent): add four native shell-style host tools"
 In `test/host-agent-runtime-env.test.ts`, assert:
 - prompt env pairs are passed to sandbox runtime env
 - strategy-derived env is present
-- podman failure triggers docker fallback
+- `docker` tool podman backend failure triggers docker backend fallback
 
 **Step 2: Run targeted test**
 
@@ -244,9 +241,11 @@ Expected: FAIL on new assertions
 
 **Step 3: Implement env forwarding path**
 
-- Add `env?: Record<string, string>` to `SandboxConfig` in `src/sandbox/types.ts`.
-- In `src/sandbox/docker.ts`, append `config.env` pairs into container `Env`.
-- Implement `src/sandbox/podman.ts` equivalent env support.
+- Keep tool surface as `docker`.
+- In `src/host-agent/tools/native-tools.ts`, implement backend resolver:
+1. try `podman` binary first
+2. fallback to `docker` binary
+- Forward merged env into container runtime call.
 - In `src/host-agent/host-agent.ts`, parse and merge envs by precedence:
 1. CLI explicit
 2. prompt `KEY=VALUE`
@@ -261,8 +260,8 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add src/sandbox/types.ts src/sandbox/docker.ts src/sandbox/podman.ts src/host-agent/host-agent.ts test/host-agent-runtime-env.test.ts
-git commit -m "feat(runtime): add env forwarding and podman-first docker fallback"
+git add src/host-agent/tools/native-tools.ts src/host-agent/host-agent.ts test/host-agent-runtime-env.test.ts
+git commit -m "feat(runtime): add docker backend resolver and env forwarding"
 ```
 
 ---
