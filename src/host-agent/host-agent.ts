@@ -8,9 +8,7 @@ import type { DockerSandbox } from '../sandbox/docker.js'
 import type { ContainerRegistry } from '../container/registry.js'
 import type { TaskStore } from '../task/store.js'
 import type { TaskContext } from '../types/shared.js'
-import { createStartContainerTool, createGetContainerStatusTool, createGetContainerJournalTool } from './tools/container-tools.js'
-import { createListPatchesTool, createApplyPatchesTool } from './tools/patch-tools.js'
-import { createBranchTool, pushChangesTool } from './tools/git-tools.js'
+import { dockerTool, gitTool, tarTool } from './tools/native-tools.js'
 
 export class HostAgent {
   private agent: Agent
@@ -27,15 +25,11 @@ export class HostAgent {
     this.store = options.store
     this.minionHome = options.minionHome
 
-    // Create tools - they will access currentRunDir and currentRepoPath via closure
+    // Create minimal native tools (shell-style)
     const tools: AgentTool<any>[] = [
-      createStartContainerTool(this.sandbox, this.registry, () => this.currentRunDir, () => this.currentRepoPath),
-      createGetContainerStatusTool(this.sandbox, this.registry),
-      createGetContainerJournalTool(this.sandbox, this.registry),
-      createListPatchesTool(this.registry),
-      createApplyPatchesTool(),
-      createBranchTool,
-      pushChangesTool
+      dockerTool,
+      gitTool,
+      tarTool,
     ]
 
     // Build system prompt
@@ -209,19 +203,10 @@ export class HostAgent {
   private extractKeyParams(toolName: string, args: any): string {
     try {
       switch (toolName) {
-        case 'start_container':
-          return `image=${args.image || 'unknown'}`
-        case 'get_container_status':
-        case 'get_container_journal':
-          return `containerId=${args.containerId || 'unknown'}`
-        case 'list_patches':
-          return `containerId=${args.containerId || 'unknown'}`
-        case 'apply_patches':
-          return `patches=${args.patches?.length || 0}`
-        case 'create_branch':
-          return `branchName=${args.branchName || 'unknown'}`
-        case 'push_changes':
-          return `branch=${args.branch || 'unknown'}`
+        case 'docker':
+        case 'git':
+        case 'tar':
+          return `args=${args.args?.slice?.(0, 3)?.join(' ') || ''}`.trim()
         default:
           return ''
       }
