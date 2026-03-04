@@ -51,6 +51,22 @@ export interface TaskResult {
   journal?: string;
 }
 
+export interface ExecutionStrategySummary {
+  preserveOnFailure?: boolean;
+  snapshotMode?: 'on_failure' | 'always';
+  retryEnabled?: boolean;
+  retryMax?: number;
+  parallelRuns?: number;
+  autoApply?: boolean;
+  memory?: string;
+  cpus?: number;
+}
+
+export interface ImageSelectionInfo {
+  source: 'analysis' | 'override' | 'default';
+  image?: string;
+}
+
 // Written by Host Agent to context.json, read by Sandbox Agent
 export interface TaskContext {
   taskId: string;
@@ -62,6 +78,8 @@ export interface TaskContext {
   rules: string[];
   maxIterations: number;
   timeout: number;
+  effectiveStrategy?: ExecutionStrategySummary;
+  forwardedEnv?: Record<string, string>;
 }
 
 // Written by Sandbox Agent to status.json, read by Host Agent
@@ -77,6 +95,20 @@ export interface SandboxStatus {
   summary?: string;
   error?: string;
   reason?: string;                // e.g. 'watchdog'
+  effectiveStrategy?: ExecutionStrategySummary;
+  forwardedEnv?: Record<string, string>;
+  parallelRuns?: number;
+  retryCount?: number;
+  applyMode?: 'auto' | 'manual';
+  lastError?: string;
+  imageSelection?: ImageSelectionInfo;
+  snapshotId?: string;
+  snapshotError?: string;
+  runtimeConfig?: {
+    memory?: string;
+    cpus?: number;
+    runtime?: string;
+  };
 }
 
 // LLM & Tool types (shared by both agents)
