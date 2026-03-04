@@ -89,11 +89,13 @@ The single host agent prompt must enforce these rules:
    - Host actions are allowed only through four native tools: `podman`, `docker`, `git`, `tar`.
    - Host generic shell is forbidden.
    - Runtime preference is `podman` first, then `docker` fallback.
+   - No dedicated delivery tool is exposed on host.
 
 2. **Container-side autonomy**
    - After container start, agent may execute arbitrary commands inside container via `podman/docker exec`.
    - In-container commands are not limited by host command allowlist semantics.
    - Agent can install dependencies, run tests/build/lint, and perform any required task actions inside container.
+   - Delivery is produced by native in-container commands (`git format-patch` or archive commands), not by a dedicated delivery tool.
 
 3. **Execution discipline**
    - Always report effective strategy, effective env vars, runtime chosen, delivery mode, and final apply result.
@@ -150,6 +152,7 @@ The host agent uses exactly four host tools:
 - `tar({ args, cwd, env, timeoutMs, runId }) -> { exitCode, stdout, stderr, deniedReason? }`
 
 Each tool call is intentionally close to native CLI usage so agent command construction remains intuitive.
+There is no `deliver_patch`/`deliver_artifact` host tool in this design.
 
 ### Tool invocation style (shell-like)
 
@@ -195,6 +198,7 @@ All four tools must use one shared policy engine in code to avoid rule drift:
    - git repo: `git clone` → modify → `git format-patch`
    - non-git: copy → modify → package (`tar` or `zip`)
    - agent can run unrestricted in-container commands via `exec ... bash -lc "<command>"`
+   - delivery generation is part of the in-container command sequence (no dedicated delivery tool call)
 8. Artifact Collector returns output to host.
 9. Host Applier applies results to target directory.
 10. Host Agent reports outcome, logs, and strategy/status fields.
@@ -297,6 +301,7 @@ This matrix is a required acceptance artifact.
 8. Four-tool contract is documented with allowed subcommands and denied behavior.
 9. All tool filtering is centralized in one shared policy engine (allowlist + denylist + arg/path checks).
 10. In-container responsibilities explicitly require a full plan→execute→verify→debug→deliver loop with best-effort completion.
+11. Dedicated delivery tools are not required; delivery is generated via native in-container commands.
 
 ## Open Questions
 
