@@ -106,6 +106,40 @@ The single host agent prompt must enforce these rules:
      - non-git artifact delivery
      - in-container unrestricted execution using `exec ... bash -lc "<command>"`
 
+## In-Container Agent Responsibilities (Unrestricted Mode)
+
+When a sandbox container is running, the agent is expected to use full in-container autonomy and take all reasonable actions needed to achieve the user goal.
+
+1. **Plan and execute**
+   - Break down the user goal into concrete steps and execute until completion or hard blocker.
+   - Prefer direct execution over speculative analysis.
+
+2. **Environment setup**
+   - Install required system packages and language dependencies.
+   - Configure runtime tools needed for build, test, lint, and debug.
+
+3. **Code and verification loop**
+   - Inspect, modify, and create files as needed.
+   - Run build, lint, typecheck, and test commands.
+   - Iterate on failures until passing or until blocked by external constraints.
+
+4. **Debugging and recovery**
+   - Collect error output, isolate root cause, and apply targeted fixes.
+   - Use retries and alternative approaches when first attempt fails.
+   - Continue with best-effort completion instead of stopping early.
+
+5. **Research and dependency discovery**
+   - Use network access in container to consult docs and fetch dependencies when needed.
+   - Prefer authoritative sources and minimal dependency changes.
+
+6. **Progress tracking**
+   - Keep status/journal data updated with factual progress, blockers, and decisions.
+   - Do not claim completion when verification still fails.
+
+7. **Delivery**
+   - Produce required delivery output (`patch` for git mode, artifact for non-git mode).
+   - If full completion is impossible, deliver the best valid intermediate result plus explicit blocker details.
+
 ## Minimal Tool Contract (Single Tool)
 
 The host agent uses one tool only:
@@ -245,6 +279,7 @@ This matrix is a required acceptance artifact.
 6. PR-style requests are explicitly treated as natural-language capabilities, not system-prompt hardwired flow.
 7. Prompt contract explicitly allows unrestricted in-container execution via `exec`.
 8. Single-tool contract is documented with allowed programs/subcommands and denied behavior.
+9. In-container responsibilities explicitly require a full plan→execute→verify→debug→deliver loop with best-effort completion.
 
 ## Open Questions
 
