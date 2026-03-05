@@ -18,7 +18,7 @@ Each example is a self-contained project with a task prompt and a verification s
 
 # 2. Try the first example
 cd examples/01-hello-world
-minion run task.txt
+minion run "$(cat task.txt)"
 
 # 3. Verify the result
 ./verify.sh

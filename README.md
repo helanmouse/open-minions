@@ -16,64 +16,61 @@ Give it a task in natural language — fix a bug, implement a feature, patch a f
 User: "Fix login page crash when email is empty"
         │
         ▼
-   Host Agent (pi-agent-core Agent)
-        │  Tool-based orchestration → Analyze project → Select image
+   Single Host Agent
+        │  Parses prompt strategy/env and orchestrates host tools
+        │
+        ├─ docker  → run/exec isolated sandbox container
+        ├─ git     → host-side patch flow for git repos
+        └─ tar     → host-side artifact flow for non-git dirs
         │
         ▼
-   Docker Sandbox (isolated container)
-        │  Clone repo → Journal → Plan → Code → Test → Lint → Commit
-        │  (pi-agent-core + inlined coding tools)
-        │
-        ▼
-   Patches delivered via git format-patch
-        │
-        ▼
-   Host Agent applies patches → Push to remote
+   Host-side delivery apply (git am / tar extract)
 ```
 
 ### Architecture
 
-**V3 Architecture with pi-mono Integration:**
+**Single-Agent Host Architecture (Current):**
 
-- **Host Agent** — Runs on your machine using `@mariozechner/pi-agent-core` Agent class with tool-based orchestration
-- **Sandbox Agent** — Runs in Docker container using `@mariozechner/pi-agent-core` Agent class
-- **Tools** — Inlined coding tools (bash, read, edit, write) + custom deliver_patch
-- **Tool-Based Orchestration** — Agent decides which tools to call based on natural language instructions
-- **Offline Runtime** — pi-runtime pre-built on host, mounted to containers (no npm install inside)
-- **Container Presets** — Pre-configured git identity, timezone, locale via `~/.minion/config.json`
+- **One LLM-facing host agent** — no separate sandbox agent process.
+- **Three host tools only** — `docker`, `git`, `tar`.
+- **Shared policy engine** — centralized allowlist/denylist/path checks for host commands.
+- **Docker backend fallback** — `podman` first, fallback to `docker`.
+- **Unrestricted in-container execution** — commands run via `docker exec ... bash -lc`.
+- **Host-side-only delivery** — git repos use patch apply; non-git directories use tar artifact apply.
+- **Prompt strategy + env parsing** — keyword strategy and arbitrary `KEY=VALUE` passthrough.
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Host Agent (pi-agent-core Agent)           │
-│  Tool-based orchestration:                  │
-│  Analyze → Select image → Launch Docker →  │
-│  Apply patches → Push                       │
+│  Host Agent (single)                        │
+│  Prompt parse → strategy/env merge          │
+│  Tools: docker / git / tar                  │
 └──────────────────┬──────────────────────────┘
-                   │ docker run (bootstrap.sh)
+                   │ docker run / docker exec
 ┌──────────────────▼──────────────────────────┐
-│  Sandbox Agent (pi-agent-core Agent)        │
-│  Clone → Journal → Plan → Code → Test →   │
-│  Lint → Commit → deliver_patch             │
+│  Isolated Sandbox Container                 │
+│  Build / test / debug / modify workspace    │
+└──────────────────┬──────────────────────────┘
+                   │ host-side apply only
+┌──────────────────▼──────────────────────────┐
+│  Delivery                                   │
+│  Git repo: git patch apply                  │
+│  Non-git: tar artifact apply                │
 └─────────────────────────────────────────────┘
-           ↑ pi-runtime mounted from host
-           ~/.minion/pi-runtime → /opt/pi-runtime
 ```
 
 ### Key Features
 
 - **Natural Language First** — Describe your task in plain language, the agent handles the rest
-- **AI Orchestrator** — Intelligent task execution with natural language control over container lifecycle, parallel execution, and error handling
-- **Smart Mode Detection** — Automatically switches to AI mode when keywords like "preserve", "parallel", "retry" are detected
-- **Container Lifecycle Management** — Preserve containers for debugging, create snapshots, manage parallel executions
+- **Single-Agent Orchestration** — One host agent manages runtime strategy, tool calls, and delivery
+- **Prompt Strategy Controls** — Keywords like preserve/retry/parallel/auto-apply map to runtime env
+- **Container Lifecycle Management** — Preserve containers for debugging, create snapshots, manage retries/parallel runs
 - **pi-mono Integration** — Unified LLM interface via `@mariozechner/pi-ai`
 - **Docker Sandbox Isolation** — All code execution happens in a secure container
-- **Offline Runtime** — pi-runtime pre-built on host, mounted to containers
-- **Patch-Based Delivery** — Results via `git format-patch` → `git am`
-- **Multiple LLM Providers** — 18 supported providers including OpenAI, Anthropic, Google, DeepSeek, Zhipu AI, xAI, Groq, Mistral AI, Kimi, MiniMax, Qwen, OpenRouter, AWS Bedrock, Azure OpenAI, Google Vertex AI, Vercel AI Gateway, Cerebras, and HuggingFace
+- **Host-Side-Only Delivery** — Git path (`git am`) and non-git path (`tar`) are both applied on host
+- **Multiple LLM Providers** — Supports OpenAI, Anthropic, Google, DeepSeek, Zhipu AI, xAI, Groq, Mistral AI, Kimi, MiniMax, Qwen, OpenRouter, AWS Bedrock, Azure OpenAI, Google Vertex AI, Vercel AI Gateway, Cerebras, and HuggingFace
 - **Interactive TUI Setup** — Terminal-based UI for easy configuration with keyboard navigation, source selection, and API key management
 - **Multi-Region Support** — Select regional API endpoints (e.g., China/International sources) for providers like Zhipu AI, Kimi, MiniMax, and Qwen
 - **Container Presets** — Pre-configured git identity, timezone, locale (customizable)
-- **Dense Journal System** — Mandatory execution journal with automatic rotation for context management
 - **Provider Aliases** — Multi-region API endpoints via alias mechanism
 
 ### Quick Start
@@ -109,7 +106,7 @@ minion setup
 ```
 
 This launches an interactive Terminal UI (TUI) for configuration:
-- **Provider Selection**: Choose from 18 LLM providers (OpenAI, Anthropic, Google, DeepSeek, Zhipu AI, xAI, Groq, Mistral AI, Kimi, MiniMax, Qwen, OpenRouter, AWS Bedrock, Azure OpenAI, Google Vertex AI, Vercel AI Gateway, Cerebras, HuggingFace)
+- **Provider Selection**: Choose from supported LLM providers (OpenAI, Anthropic, Google, DeepSeek, Zhipu AI, xAI, Groq, Mistral AI, Kimi, MiniMax, Qwen, OpenRouter, AWS Bedrock, Azure OpenAI, Google Vertex AI, Vercel AI Gateway, Cerebras, HuggingFace)
 - **Source Selection**: For providers with multiple regions (e.g., Zhipu AI, Kimi, MiniMax, Qwen), select between international and China sources
 - **Model Selection**: Browse available models (newest models shown first)
 - **API Key Input**: Enter or confirm API key with masked display for security
@@ -136,8 +133,11 @@ npm run docker:build
 **Basic Usage:**
 
 ```bash
-# Run a task (legacy mode)
+# Run a task
 minion run "Fix login page crash when email is empty"
+
+# Run task from a prompt file
+minion run "$(cat task.txt)"
 
 # With options
 minion run -y "Add user registration" --repo /path/to/repo --timeout 60
@@ -153,9 +153,9 @@ minion setup                              # Interactive configuration
 minion config                              # View current configuration
 ```
 
-**AI Orchestrator Mode (New!):**
+**Prompt Strategy Examples:**
 
-The AI Orchestrator automatically activates when you use natural language keywords:
+Use natural language keywords to control runtime behavior:
 
 ```bash
 # Preserve container on failure for debugging
@@ -260,63 +260,60 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 用户: "修复登录页面空邮箱时的崩溃问题"
         │
         ▼
-   Host Agent（pi-agent-core Agent）
-        │  基于工具的编排 → 分析项目 → 选择镜像
+   单一 Host Agent
+        │  解析提示词策略/环境变量并编排主机工具
+        │
+        ├─ docker  → 启动/执行隔离沙箱容器
+        ├─ git     → Git 仓库主机侧补丁交付
+        └─ tar     → 非 Git 目录主机侧制品交付
         │
         ▼
-   Docker 沙箱（隔离容器）
-        │  克隆仓库 → 日志 → 规划 → 编码 → 测试 → Lint → 提交
-        │  (pi-agent-core + 内置编码工具)
-        │
-        ▼
-   通过 git format-patch 交付补丁
-        │
-        ▼
-   Host Agent 应用补丁 → 推送到远端
+   主机侧交付应用（git am / tar 解包）
 ```
 
 ### 架构
 
-**V3 架构集成 pi-mono：**
+**单 Agent 主机架构（当前）：**
 
-- **Host Agent** — 在本机运行，使用 `@mariozechner/pi-agent-core` Agent 类，基于工具的编排
-- **Sandbox Agent** — 在 Docker 容器内运行，使用 `@mariozechner/pi-agent-core` Agent 类
-- **工具** — 内置编码工具（bash、read、edit、write）+ 自定义 deliver_patch
-- **基于工具的编排** — Agent 根据自然语言指令决定调用哪些工具
-- **离线运行时** — pi-runtime 在宿主机预构建，挂载到容器内
-- **容器预设** — 预配置 git 身份、时区、语言环境，可通过 `~/.minion/config.json` 自定义
+- **单一 LLM Host Agent** — 不再使用独立 Sandbox Agent 进程。
+- **仅三类主机工具** — `docker`、`git`、`tar`。
+- **统一策略引擎** — 主机命令统一走 allowlist/denylist/路径检查。
+- **Docker backend 回退** — `podman` 优先，失败回退到 `docker`。
+- **容器内执行不受限** — 通过 `docker exec ... bash -lc` 执行任意构建/测试/调试命令。
+- **严格主机侧交付** — Git 仓库走补丁应用，非 Git 目录走 tar 制品应用。
+- **提示词策略 + 环境变量解析** — 关键词策略与任意 `KEY=VALUE` 透传。
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Host Agent (pi-agent-core Agent)           │
-│  基于工具的编排：                            │
-│  分析 → 选择镜像 → 启动 Docker → 应用补丁  │
-│  → 推送                                      │
+│  Host Agent（单实例）                        │
+│  提示词解析 → 策略/环境变量合并              │
+│  工具：docker / git / tar                    │
 └──────────────────┬──────────────────────────┘
-                   │ docker run (bootstrap.sh)
+                   │ docker run / docker exec
 ┌──────────────────▼──────────────────────────┐
-│  Sandbox Agent (pi-agent-core Agent)        │
-│  克隆 → 规划 → 编码 → 测试 → Lint →         │
-│  提交 → deliver_patch → git format-patch   │
+│  隔离沙箱容器                                │
+│  构建 / 测试 / 调试 / 修改代码               │
+└──────────────────┬──────────────────────────┘
+                   │ 仅主机侧应用交付
+┌──────────────────▼──────────────────────────┐
+│  交付                                        │
+│  Git 仓库：git 补丁应用                      │
+│  非 Git 目录：tar 制品应用                   │
 └─────────────────────────────────────────────┘
-           ↑ pi-runtime 从宿主机挂载
-           ~/.minion/pi-runtime → /opt/pi-runtime
 ```
 
 ### 核心特性
 
 - **自然语言优先** — 用自然语言描述任务，代理自动完成
-- **AI 编排器** — 智能任务执行，支持自然语言控制容器生命周期、并行执行和错误处理
-- **智能模式检测** — 检测到"保留"、"并行"、"重试"等关键词时自动切换到 AI 模式
-- **容器生命周期管理** — 保留容器用于调试、创建快照、管理并行执行
+- **单 Agent 编排** — 一个 Host Agent 统一处理策略、工具调用、交付
+- **提示词策略控制** — `preserve/retry/parallel/auto-apply` 等关键词映射到运行时环境变量
+- **容器生命周期管理** — 支持保留容器、快照、重试、并行
 - **pi-mono 集成** — 通过 `@mariozechner/pi-ai` 统一 LLM 接口
 - **Docker 沙箱隔离** — 所有代码执行都在安全容器中进行
-- **离线运行时** — pi-runtime 在宿主机预构建，挂载到容器内
-- **补丁交付** — 通过 `git format-patch` → `git am` 交付结果
-- **多 LLM 支持** — 支持 25 个 LLM 提供商，包括 OpenAI、Anthropic、Google、DeepSeek、智谱等
+- **严格主机侧交付** — Git 仓库走 `git` 补丁，非 Git 目录走 `tar` 制品
+- **多 LLM 支持** — 支持 OpenAI、Anthropic、Google、DeepSeek、智谱等多个提供商
 - **交互式 TUI 配置** — 终端图形界面，支持键盘导航，配置更便捷
 - **容器预设** — 预配置 git 身份、时区、语言环境（可自定义）
-- **代理日志** — 强制执行日志，便于故障诊断
 - **提供商别名** — 多区域 API 端点别名机制
 
 ### 快速开始
@@ -355,7 +352,7 @@ minion setup
 - 使用方向键在提供商和模型之间导航
 - 按 Enter 选择提供商/模型
 - 按 Escape 返回上一级
-- TUI 原生支持 25 个 LLM 提供商
+- TUI 支持多提供商和多区域来源
 
 或手动配置环境变量：
 
@@ -378,7 +375,7 @@ npm run docker:build
 **基础用法：**
 
 ```bash
-# 运行任务（传统模式）
+# 运行任务
 minion run "修复登录页面空邮箱时的崩溃问题"
 
 # 带选项运行
@@ -395,9 +392,9 @@ minion setup                              # 交互式配置
 minion config                              # 查看当前配置
 ```
 
-**AI 编排器模式（新功能！）：**
+**提示词策略示例：**
 
-当使用自然语言关键词时，AI 编排器会自动激活：
+可用自然语言关键词控制运行行为：
 
 ```bash
 # 失败时保留容器用于调试
@@ -417,6 +414,9 @@ minion run "运行重型任务，使用 8g 内存和 4 核"
 
 # 使用环境变量强制启用 AI 模式
 MINION_AI_MODE=true minion run "任意任务描述"
+
+# 从提示词文件执行任务
+minion run "$(cat task.txt)"
 ```
 
 **AI 模式关键词：**

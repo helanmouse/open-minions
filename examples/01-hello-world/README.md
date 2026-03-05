@@ -12,7 +12,7 @@ The simplest possible example. The agent creates a Python file from scratch and 
 
 ```bash
 # Let the minion complete the task
-minion task.txt
+minion run "$(cat task.txt)"
 
 # Verify
 ./verify.sh
@@ -34,7 +34,7 @@ minion task.txt
 
 ```bash
 # 让 minion 完成任务
-minion task.txt
+minion run "$(cat task.txt)"
 
 # 验证
 ./verify.sh
