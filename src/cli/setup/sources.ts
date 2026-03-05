@@ -119,7 +119,7 @@ export const PROVIDER_SOURCES: Record<string, ProviderSources> = {
   },
   zai: {
     provider: 'zai',
-    displayName: 'Zhipu AI',
+    displayName: 'Zhipu AI (GLM)',
     description: 'GLM-4 Flash, GLM-4 Plus, GLM-5',
     sources: [
       {

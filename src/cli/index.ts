@@ -3,6 +3,8 @@ import { config } from 'dotenv';
 import { Command } from 'commander';
 import { join } from 'path';
 import { homedir } from 'os';
+import { fileURLToPath } from 'url';
+import { realpathSync } from 'fs';
 
 // Load .env file from current directory or home directory
 config({ path: ['.env', join(homedir(), '.minion', '.env')] });
@@ -272,6 +274,17 @@ program
     }
   });
 
-// Run CLI - always parse when this file is executed
-// This handles direct execution, symlinked execution, and npm link
-program.parse();
+function isDirectCliExecution(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectCliExecution()) {
+  program.parse();
+}
